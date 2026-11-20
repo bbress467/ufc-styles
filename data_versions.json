@@ -1,0 +1,12 @@
+{
+  "neelagiriaditya": {
+    "kaggle_ref": "neelagiriaditya/ufc-datasets-1994-2025",
+    "version": 5,
+    "note": "Kaggle dataset version 5, last updated 2026-08-11; data through 2026-08-08"
+  },
+  "greco1899": {
+    "repo": "Greco1899/scrape_ufc_stats",
+    "commit": "e87487e35b0c8526f4fcf56997de7f8f96472d06",
+    "note": "Reference only (UFC event whitelist + cross-check). Commit of 2026-11-18 data refresh."
+  }
+}

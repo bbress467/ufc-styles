@@ -1,1 +1,1 @@
-# UFC-styles
+# ufc-styles

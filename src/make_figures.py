@@ -25,6 +25,10 @@ import style_axes as A  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "docs" / "figures"
+README_PATH = ROOT / "README.md"
+DATA_RANGE_START, DATA_RANGE_END = "<!-- data-range:start -->", "<!-- data-range:end -->"
+MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+          "November", "December"]
 DPI = 150
 BLUE, RED, GREY = "#2F6DB3", "#C44E52", "#B8B8B8"
 
@@ -512,11 +516,35 @@ def matchup_results(path: Path, min_prior: int = M.MIN_PRIOR) -> None:
     plt.close(fig)
 
 
+def data_range_text() -> str:
+    """'Based on UFC fights from 2000 through August 8, 2026', from the dataset's first year and last fight date."""
+    import sqlite3
+    with sqlite3.connect(F.DB_PATH) as con:
+        first, last = con.execute("SELECT MIN(event_date), MAX(event_date) FROM fights WHERE event_date >= ?",
+                                  (F.START_DATE,)).fetchone()
+    y, m, d = (int(v) for v in last.split("-"))
+    return f"Based on UFC fights from {first[:4]} through {MONTHS[m - 1]} {d}, {y}"
+
+
+def update_readme_data_range(path: Path = README_PATH) -> str:
+    """Rewrite the README's data-range note (between the data-range markers) from the dataset."""
+    text = path.read_text(encoding="utf-8")
+    i, j = text.find(DATA_RANGE_START), text.find(DATA_RANGE_END)
+    if i < 0 or j < i:
+        raise RuntimeError(f"README is missing the {DATA_RANGE_START} ... {DATA_RANGE_END} markers")
+    line = f"*{data_range_text()}.*"
+    new = text[:i + len(DATA_RANGE_START)] + line + text[j:]
+    if new != text:
+        path.write_text(new, encoding="utf-8")
+    return line
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for name, fn in (("style_map.png", style_map), ("style_evolution.png", style_evolution), ("matchup_results.png", matchup_results)):
         fn(OUT_DIR / name)
         print(f"wrote {(OUT_DIR / name).relative_to(ROOT)}")
+    print(f"README data-range note: {update_readme_data_range()}")
 
 
 if __name__ == "__main__":

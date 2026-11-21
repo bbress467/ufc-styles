@@ -35,8 +35,11 @@
     const quad = {};
     DATA.meta.quadrants.forEach((q) => { quad[q.name] = q; });
     DATA.quad = quad;
-    const [y, m] = DATA.meta.data_through.split("-");
+    const [y, m, d] = DATA.meta.data_through.split("-");
     document.getElementById("data-through").textContent = `${MONTHS[+m - 1]} ${y}`;
+    // Dateline under the title, from the dataset's first year and last fight date (updates when the data is refreshed)
+    document.getElementById("data-range").textContent =
+      `Based on UFC fights from ${DATA.meta.data_from.slice(0, 4)} through ${MONTHS[+m - 1]} ${+d}, ${y}`;
     document.getElementById("source-link").href = DATA.meta.source.url;
     document.getElementById("repo-link").href = DATA.meta.repo_url;
     document.getElementById("legend-all").textContent =

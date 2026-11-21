@@ -199,30 +199,148 @@ def check_labels(ax, labels: dict, points: dict, obstacles: dict | None = None,
         assert own < 80, f"label {a} is far from its point ({own:.0f}px)"
 
 
+# --------------------------------------------------------------------------- colour checks
+# Machado, Oliveira & Fernandes (2009) colour-vision-deficiency simulation matrices (severity 1.0, linear RGB).
+CVD_MATRICES = {
+    "protanopia": np.array([[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]]),
+    "deuteranopia": np.array([[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.011820, 0.042940, 0.968881]]),
+    "tritanopia": np.array([[1.255528, -0.076749, -0.178779], [-0.078411, 0.930809, 0.147602], [0.004733, 0.691367, 0.303900]]),
+}
+
+
+def _to_linear(c):
+    c = np.asarray(c, float)
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+def _to_srgb(c):
+    c = np.clip(np.asarray(c, float), 0, 1)
+    return np.where(c <= 0.0031308, 12.92 * c, 1.055 * c ** (1 / 2.4) - 0.055)
+
+
+def simulate_cvd(rgb, kind: str):
+    """sRGB colour as seen with a colour-vision deficiency ('normal' returns it unchanged)."""
+    if kind == "normal":
+        return np.asarray(rgb, float)
+    return _to_srgb(CVD_MATRICES[kind] @ _to_linear(rgb))
+
+
+def _lab(rgb):
+    lin = _to_linear(rgb)
+    xyz = np.array([[0.4124, 0.3576, 0.1805], [0.2126, 0.7152, 0.0722], [0.0193, 0.1192, 0.9505]]) @ lin
+    xyz = xyz / np.array([0.95047, 1.0, 1.08883])
+    f = np.where(xyz > (6 / 29) ** 3, np.cbrt(xyz), xyz / (3 * (6 / 29) ** 2) + 4 / 29)
+    return np.array([116 * f[1] - 16, 500 * (f[0] - f[1]), 200 * (f[1] - f[2])])
+
+
+def delta_e2000(rgb1, rgb2) -> float:
+    """CIEDE2000 colour difference between two sRGB colours (about 2 is just noticeable; 10+ is clearly different)."""
+    L1, a1, b1 = _lab(rgb1)
+    L2, a2, b2 = _lab(rgb2)
+    C1, C2 = np.hypot(a1, b1), np.hypot(a2, b2)
+    Cb = (C1 + C2) / 2
+    G = 0.5 * (1 - np.sqrt(Cb ** 7 / (Cb ** 7 + 25 ** 7)))
+    a1p, a2p = (1 + G) * a1, (1 + G) * a2
+    C1p, C2p = np.hypot(a1p, b1), np.hypot(a2p, b2)
+    h1p, h2p = np.degrees(np.arctan2(b1, a1p)) % 360, np.degrees(np.arctan2(b2, a2p)) % 360
+    dLp, dCp = L2 - L1, C2p - C1p
+    dh = h2p - h1p
+    dh = dh - 360 if dh > 180 else dh + 360 if dh < -180 else dh
+    dHp = 2 * np.sqrt(C1p * C2p) * np.sin(np.radians(dh / 2)) if C1p * C2p else 0.0
+    Lbp, Cbp = (L1 + L2) / 2, (C1p + C2p) / 2
+    hs = h1p + h2p
+    hbp = hs / 2 if abs(h1p - h2p) <= 180 else (hs + 360) / 2 if hs < 360 else (hs - 360) / 2
+    if C1p * C2p == 0:
+        hbp = hs
+    T = (1 - 0.17 * np.cos(np.radians(hbp - 30)) + 0.24 * np.cos(np.radians(2 * hbp))
+         + 0.32 * np.cos(np.radians(3 * hbp + 6)) - 0.20 * np.cos(np.radians(4 * hbp - 63)))
+    SL = 1 + 0.015 * (Lbp - 50) ** 2 / np.sqrt(20 + (Lbp - 50) ** 2)
+    SC, SH = 1 + 0.045 * Cbp, 1 + 0.015 * Cbp * T
+    RT = -2 * np.sqrt(Cbp ** 7 / (Cbp ** 7 + 25 ** 7)) * np.sin(np.radians(60 * np.exp(-((hbp - 275) / 25) ** 2)))
+    return float(np.sqrt((dLp / SL) ** 2 + (dCp / SC) ** 2 + (dHp / SH) ** 2 + RT * (dCp / SC) * (dHp / SH)))
+
+
+def contrast_ratio(rgb1, rgb2) -> float:
+    """WCAG 2 contrast ratio between two sRGB colours (4.5 = normal-text AA, 3 = large text / graphics)."""
+    lum = lambda c: float(np.array([0.2126, 0.7152, 0.0722]) @ _to_linear(c))
+    hi, lo = sorted((lum(rgb1), lum(rgb2)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def corner_color(tint_rgb, alpha: float):
+    """Colour actually rendered in a quadrant's outer corner: the tint at full shading opacity over white."""
+    return (1 - alpha) * np.ones(3) + alpha * np.asarray(tint_rgb, float)
+
+
 QUADRANT_NAMES = {   # (x side, y side): name
     ("left", "top"): "Clinch and body strikers", ("right", "top"): "Clinch grapplers",
     ("left", "bottom"): "Range strikers", ("right", "bottom"): "Wrestlers and ground grapplers",
 }
-SHADE_RGB = (0.42, 0.42, 0.42)     # one neutral gray for all four quadrants
-SHADE_MAX_ALPHA = 0.30             # opacity in the outer corners, fading to ~0 at the centre
+# Quadrant colours: muted light tints, warm on the striking side and cool on the grappling side. Each tint is the
+# colour rendered in that quadrant's outer corner; the shading fades from it to white at the centre.
+# Chosen so every pair stays distinguishable under protanopia, deuteranopia and tritanopia (check_quadrant_colors).
+QUADRANT_TINTS = {
+    ("left", "top"): "#e8baae",      # soft coral: clinch and body strikers
+    ("left", "bottom"): "#fbe0b6",   # soft amber: range strikers
+    ("right", "top"): "#a4d3cf",     # soft teal: clinch grapplers
+    ("right", "bottom"): "#c7d6f5",  # soft blue: wrestlers and ground grapplers
+}
+QUADRANT_NAME_COLORS = {             # darker shades of each tint (same hue), readable on their corner
+    ("left", "top"): "#842f1e", ("left", "bottom"): "#6f5000",
+    ("right", "top"): "#005a56", ("right", "bottom"): "#045796",
+}
+LABELLED_DOT_COLOR = "#1b2a4a"       # dark navy: contrasts with all four tints
+SHADE_GAMMA = 1.6                    # fade profile: tint strength = r ** gamma (1 in the outer corner, ~0 at centre)
+MIN_TINT_DELTA_E = 8.0               # CIEDE2000; about 2 is just noticeable, 10 is clearly different
+MIN_TEXT_CONTRAST = 4.5              # WCAG AA for normal text
 NOTE = ("Styles are a continuum: fighters near the center have no strong lean either way.\n"
         "Positions are relative to fighters in the same division and era.")
 
 
+def check_quadrant_colors() -> dict:
+    """Assert the quadrant colours are accessible; return the worst cases for reporting.
+
+    * every pair of corner tints differs by at least MIN_TINT_DELTA_E (CIEDE2000) for normal vision and under
+      simulated protanopia, deuteranopia and tritanopia (Machado et al. 2009, full severity)
+    * each quadrant name has at least MIN_TEXT_CONTRAST against its own corner tint
+    * the labelled-fighter dot colour has at least MIN_TEXT_CONTRAST against every tint
+    """
+    from itertools import combinations
+    import matplotlib.colors as mcolors
+    tints = {k: np.array(mcolors.to_rgb(v)) for k, v in QUADRANT_TINTS.items()}
+    worst = {}
+    for kind in ("normal", "protanopia", "deuteranopia", "tritanopia"):
+        sim = {k: simulate_cvd(c, kind) for k, c in tints.items()}
+        d, a, b = min((delta_e2000(sim[a], sim[b]), a, b) for a, b in combinations(sim, 2))
+        assert d >= MIN_TINT_DELTA_E, f"{kind}: quadrant tints {a} and {b} too similar (dE2000 {d:.1f})"
+        worst[kind] = (round(d, 1), a, b)
+    for k, name_color in QUADRANT_NAME_COLORS.items():
+        c = contrast_ratio(mcolors.to_rgb(name_color), tints[k])
+        assert c >= MIN_TEXT_CONTRAST, f"quadrant name {k} contrast {c:.1f} < {MIN_TEXT_CONTRAST}"
+    dot = mcolors.to_rgb(LABELLED_DOT_COLOR)
+    worst["dot contrast"] = round(min(contrast_ratio(dot, t) for t in tints.values()), 1)
+    assert worst["dot contrast"] >= MIN_TEXT_CONTRAST, f"dot colour contrast {worst['dot contrast']} too low"
+    return worst
+
+
 def _quadrant_shading(ax, xlim, ylim, n: int = 600) -> None:
-    """Gray shading per quadrant: darkest in each outer corner, fading to nearly nothing toward the centre."""
+    """Per-quadrant tint: strongest in each outer corner, fading to white toward the centre (neutral middle)."""
     xs, ys = np.linspace(*xlim, n), np.linspace(*ylim, n)
     X, Y = np.meshgrid(xs, ys)
     u = np.where(X >= 0, X / xlim[1], X / xlim[0])          # 0 at the split, 1 at the outer edge of each quadrant
     v = np.where(Y >= 0, Y / ylim[1], Y / ylim[0])
     r = np.clip(np.hypot(u, v) / np.sqrt(2), 0, 1)          # 1 in the outer corner
+    import matplotlib.colors as mcolors
     rgba = np.zeros((n, n, 4))
-    rgba[..., :3] = SHADE_RGB
-    rgba[..., 3] = SHADE_MAX_ALPHA * r ** 1.6
+    for (xs_, ys_), tint in QUADRANT_TINTS.items():
+        mask = ((X >= 0) if xs_ == "right" else (X < 0)) & ((Y >= 0) if ys_ == "top" else (Y < 0))
+        rgba[mask, :3] = mcolors.to_rgb(tint)
+    rgba[..., 3] = r ** SHADE_GAMMA          # over the white axes: white at the centre, the tint in the corner
     ax.imshow(rgba, extent=(*xlim, *ylim), origin="lower", aspect="auto", interpolation="bilinear", zorder=0)
 
 
 def style_map(path: Path) -> None:
+    check_quadrant_colors()
     profiles = F.build_profiles(None)
     model_path = A.MODEL_DIR / f"style_axes_m{A.CHOSEN_AXES}.joblib"
     axes = A.StyleAxes.load(model_path) if model_path.exists() else A.fit_style_axes(profiles, A.CHOSEN_AXES)
@@ -242,7 +360,7 @@ def style_map(path: Path) -> None:
     # Background texture: small, light dots that still show in the shaded corners.
     bg = ax.scatter(s["axis_1"], s["axis_2"], s=5, color="#9c9c9c", alpha=0.7, lw=0, zorder=2)
     xy = np.array(list(points.values()))
-    lab = ax.scatter(xy[:, 0], xy[:, 1], s=36, color=BLUE, edgecolor="white", lw=0.6, zorder=3)
+    lab = ax.scatter(xy[:, 0], xy[:, 1], s=36, color=LABELLED_DOT_COLOR, edgecolor="white", lw=0.6, zorder=3)
     avg = ax.scatter([0], [0], marker="D", s=46, facecolor="white", edgecolor="#222222", lw=1.3, zorder=4)
     ax.set_xticks([])
     ax.set_yticks([])
@@ -257,7 +375,7 @@ def style_map(path: Path) -> None:
         x = 0.015 if xs_ == "left" else 0.985
         y = 0.975 if ys_ == "top" else 0.025
         names[text] = ax.text(x, y, text, transform=ax.transAxes, ha=xs_, va=ys_, fontsize=14, fontweight="bold",
-                              color="#4a4a4a", zorder=6)
+                              color=QUADRANT_NAME_COLORS[(xs_, ys_)], zorder=6)
 
     # Plain-language axis ends: horizontal below the plot's corners, vertical above/below the vertical split.
     pos = ax.get_position()

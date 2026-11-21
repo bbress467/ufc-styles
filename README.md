@@ -1,12 +1,23 @@
 # UFC Fighter Styles
 
+By [Bobby Bress](https://github.com/bbress467)
+
 **[Explore the interactive style map →](https://bbress467.github.io/ufc-styles/)**
 
 Describing UFC fighters' styles from round-by-round fight statistics, on continuous style axes with clusters as
 a secondary shorthand, and testing whether style matchups predict outcomes beyond fighter skill.
 
-Status: the data pipeline, era-relative style features, named style axes, clusters, an improved Elo and a time-split matchup
-analysis are built.
+**Status: complete.** The project includes a reproducible data pipeline, the style analysis (era-relative style axes and clusters),
+the matchup analysis (an improved Elo and time-split tests) and the [live interactive site](https://bbress467.github.io/ufc-styles/).
+
+**Built with** Python, pandas, scikit-learn, SQLite, matplotlib, D3 and GitHub Pages.
+
+## About this project
+
+I built this to test the fan idea that "styles make fights": that how two fighters match up stylistically decides fights as much as
+who is better. Four clear, stable style dimensions describe how UFC fighters fight, but once skill is accounted for, style matchups
+don't predict winners on fights the models never saw. The one small exception is that fighters who attempt more takedowns win
+slightly more often.
 
 ## Results
 

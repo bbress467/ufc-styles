@@ -24,7 +24,20 @@ rather than weight class or era.
 | 3 | **submission hunting** | more submission attempts |
 | 4 | **leg kicking** | more strikes aimed at the legs |
 
-![Style map: fighters on axis 1 (grappler vs. volume striker) and axis 2 (clinch and body work), with well-known fighters labelled](docs/figures/style_map.png)
+![Style map as a quadrant chart: horizontal axis from more striking volume (left) to more takedowns and control (right), vertical axis from more head strikes at range (bottom) to more clinch and body work (top). The four shaded quadrants are labelled range strikers, clinch and body strikers, clinch grapplers, and wrestlers and ground grapplers, with 22 well-known fighters labelled.](docs/figures/style_map.png)
+
+**Reading the style map.** The map plots the first two axes. Left to right is axis 1, from more striking volume to more takedowns and
+control; bottom to top is axis 2, from head strikes at range to clinch and body work. The chart splits at the average fighter (the
+diamond in the centre), giving four broad styles:
+
+- **Range strikers** (bottom left), e.g. Sean Strickland and Israel Adesanya
+- **Clinch and body strikers** (top left), e.g. Nate Diaz and Anderson Silva
+- **Clinch grapplers** (top right), e.g. Demetrious Johnson and Kamaru Usman
+- **Wrestlers and ground grapplers** (bottom right), e.g. Khabib Nurmagomedov and Demian Maia
+
+The shading darkens toward each outer corner, where the clearest examples of each style sit. These quadrant names describe regions of a
+continuum, not separate groups: fighters near the centre have no strong lean either way, and positions are relative to fighters in the
+same division and era. Axes 3 (submission hunting) and 4 (leg kicking) aren't shown here.
 
 - **Together they capture about 77%** of the variation in the eight style measures.
 - **They are very stable:** refitting on resampled fighters reproduces every axis almost exactly, with congruence 0.98 or higher.

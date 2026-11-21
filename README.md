@@ -24,6 +24,8 @@ rather than weight class or era.
 | 3 | **submission hunting** | more submission attempts |
 | 4 | **leg kicking** | more strikes aimed at the legs |
 
+![Style map: fighters on axis 1 (grappler vs. volume striker) and axis 2 (clinch and body work), with well-known fighters labelled](docs/figures/style_map.png)
+
 - **Together they capture about 77%** of the variation in the eight style measures.
 - **They are very stable:** refitting on resampled fighters reproduces every axis almost exactly, with congruence 0.98 or higher.
 - **The extremes are recognizable fighters:**
@@ -38,6 +40,8 @@ rather than weight class or era.
 
 From `notebooks/04_style_evolution.ipynb`, comparing 2000–04 with 2021–25, pooled over all UFC fights:
 
+![Pace and the share of strikes thrown at distance, by year from 2000 to 2025, with 95% confidence bands](docs/figures/style_evolution.png)
+
 - **Pace more than doubled,** from about 3.8 to 8.5 significant-strike attempts per fighter-minute. Most of that rise came by about 2017.
 - **Fights moved to range.** The share of significant strikes thrown at distance rose from about 52% to 88%. Clinch and ground
   striking each fell to about 6% of attempts, from about 20% and 29%.
@@ -51,6 +55,8 @@ From `notebooks/04_style_evolution.ipynb`, comparing 2000–04 with 2021–25, p
 
 ([docs/matchups.md](docs/matchups.md), `notebooks/07_matchups.ipynb`.) Models were trained on 2006–18 fights and tested on about
 2,000 fights from 2019 to 2026, with each fighter's style measured only from their earlier fights.
+
+![Test log loss on 2019–2026 fights for Elo alone vs. Elo plus the four style axes, and the change from adding style, with 95% confidence intervals](docs/figures/matchup_results.png)
 
 - **A better skill rating helps a lot.** The improved Elo, with newcomers rated against the current roster, bigger updates for finishes
   and K shrinking with experience, was tuned only on 2005–18 fights. On 2019+ fights the Elo favourite wins 58.0% of the time, against
@@ -90,6 +96,7 @@ See [docs/data_sources.md](docs/data_sources.md) for why this source was chosen.
 | 6. Fit style clusters (PCA + Gaussian mixture): secondary shorthand | `src/clustering.py` | `data/processed/cluster_probabilities.csv`, `data/processed/models/` |
 | 7. Elo ratings (all UFC fights since 1994; baseline and improved Elo, both tuned on 2005–18) | `src/elo.py` | `data/processed/elo_ratings.csv` (tuning table: [docs/elo_tuning.csv](docs/elo_tuning.csv), via `--tune`) |
 | 8. Matchup models: Elo vs Elo + style, time split at 2019-01-01 | `src/matchups.py` | `data/processed/matchup_dataset.pkl` |
+| 9. README figures | `src/make_figures.py` | [docs/figures/](docs/figures/) (committed) |
 
 Feature definitions and decisions: [docs/feature_spec.md](docs/feature_spec.md). Style axes: [docs/style_axes.md](docs/style_axes.md).
 Clustering: [docs/clustering.md](docs/clustering.md). Matchup analysis, Elo and evaluation design: [docs/matchups.md](docs/matchups.md).
@@ -108,6 +115,7 @@ venv/bin/python src/style_axes.py
 venv/bin/python src/clustering.py
 venv/bin/python src/elo.py
 venv/bin/python src/matchups.py
+venv/bin/python src/make_figures.py
 venv/bin/python -m unittest discover tests
 ```
 

@@ -88,7 +88,7 @@ See [docs/data_sources.md](docs/data_sources.md) for why this source was chosen.
 | 4. Build per-fighter style profiles (shrunk, standardized within division and era) | `src/features.py` | `data/processed/fighter_profiles.csv` |
 | 5. Fit the style axes (PCA + varimax, 4 axes): the main style description | `src/style_axes.py` | `data/processed/style_axes.csv`, `data/processed/models/` |
 | 6. Fit style clusters (PCA + Gaussian mixture): secondary shorthand | `src/clustering.py` | `data/processed/cluster_probabilities.csv`, `data/processed/models/` |
-| 7. Elo ratings (all UFC fights since 1994; baseline and improved Elo, both tuned on 2005–18) | `src/elo.py` | `data/processed/elo_ratings.csv`, `data/processed/elo_variants.csv` |
+| 7. Elo ratings (all UFC fights since 1994; baseline and improved Elo, both tuned on 2005–18) | `src/elo.py` | `data/processed/elo_ratings.csv` (tuning table: [docs/elo_tuning.csv](docs/elo_tuning.csv), via `--tune`) |
 | 8. Matchup models: Elo vs Elo + style, time split at 2019-01-01 | `src/matchups.py` | `data/processed/matchup_dataset.pkl` |
 
 Feature definitions and decisions: [docs/feature_spec.md](docs/feature_spec.md). Style axes: [docs/style_axes.md](docs/style_axes.md).
@@ -112,8 +112,9 @@ venv/bin/python -m unittest discover tests
 ```
 
 `src/download_data.py --latest` moves the pins to the newest dataset versions. No Kaggle login is needed.
-`src/elo.py` runs the Elo settings grid search (about 40 minutes) the first time, saves it to `data/processed/elo_variants.csv`,
-and reuses it afterwards; `--retune` reruns it.
+`src/elo.py` writes ratings with the chosen settings (`elo.ELO_PARAMS`) in about a second. `src/elo.py --tune` reruns the settings
+grid search on 2005–18 fights (about 40 minutes) and rewrites [docs/elo_tuning.csv](docs/elo_tuning.csv), the committed table of
+the best setting per variant. It doesn't change `ELO_PARAMS`; update that by hand if the best setting changes.
 Notebooks:
 
 - `01_feature_eda`: feature distributions, correlations, shrinkage priors

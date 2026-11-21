@@ -61,6 +61,14 @@ class EloTests(unittest.TestCase):
         roster_mean = (1506 + 1474) / 2 - 10    # A and B debut at 1500 - 10 (no roster yet); C at their mean - 10
         self.assertAlmostEqual(r.at["f2", "elo_blue"], roster_mean)                  # C debuts relative to the roster
 
+    def test_committed_tuning_table_matches_elo_params(self):
+        """docs/elo_tuning.csv's best combined setting is what ELO_PARAMS uses (guards against tuning drift)."""
+        t = pd.read_csv(elo.TUNING_PATH, index_col=0)
+        self.assertEqual(t["log_loss"].idxmin(), "all three combined")
+        best = t.loc["all three combined"]
+        for key in ("k", "debut_offset", "finish_mult", "k_decay"):
+            self.assertAlmostEqual(float(best[key]), float(elo.ELO_PARAMS[key]), msg=key)
+
     @unittest.skipUnless(elo.DB_PATH.exists(), "database not built")
     def test_later_results_do_not_change_earlier_ratings(self):
         f = elo.load_ufc_fights()

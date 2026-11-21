@@ -1,0 +1,6 @@
+variant,log_loss,k,debut_offset,finish_mult,k_decay
+"baseline (constant K, fixed start)",0.678241,80,,1.000000,0.000000
++ debut rating relative to roster,0.676055,80,0.000000,1.000000,0.000000
++ larger updates for finishes,0.678072,80,,1.250000,0.000000
++ K shrinking with experience,0.677585,100,,1.000000,0.200000
+all three combined,0.675014,100,0.000000,1.250000,0.200000

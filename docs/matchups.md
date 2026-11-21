@@ -34,7 +34,8 @@ Everyone starts at 1500, with one constant **K = 80**. The grid minimum sits in 
 
 ### Improved Elo (`ELO_PARAMS`, used by the matchup analysis)
 
-Three refinements, each tuned on its own (with K retuned), then all three together (`elo.tune_variants`). Grid: K 40–300; debut offset
+Three refinements, each tuned on its own (with K retuned), then all three together (`elo.tune_variants`). The best setting
+per variant is committed in [`elo_tuning.csv`](elo_tuning.csv); `python src/elo.py --tune` reruns the search (about 40 minutes). Grid: K 40–300; debut offset
 −100 to +50, or fixed start; finish multiplier 1–2.5; K decay 0–0.6.
 
 - **Debut rating relative to the roster.** A **lower fixed starting rating does nothing** in zero-sum Elo. Every fighter debuts at

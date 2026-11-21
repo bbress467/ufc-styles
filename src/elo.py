@@ -183,23 +183,31 @@ def tune_variants(fights: pd.DataFrame, start: str = TUNE_START, end: str = TUNE
     return pd.DataFrame(rows).set_index("variant")
 
 
-VARIANTS_PATH = ROOT / "data" / "processed" / "elo_variants.csv"
+# Grid search results (best setting per variant), committed so the tuning evidence is visible without rerunning it.
+TUNING_PATH = ROOT / "docs" / "elo_tuning.csv"
 
 
-def main(retune: bool = False) -> None:
+def main(tune: bool = False) -> None:
+    """Write pre-fight ratings for every UFC fight using ELO_PARAMS.
+
+    With tune=True (--tune), first rerun the settings search on 2005-2018 fights (about 40 minutes), print it,
+    and save it to docs/elo_tuning.csv. The search doesn't change ELO_PARAMS: update the constant by hand if the
+    best setting changes.
+    """
     fights = load_ufc_fights()
-    res = tune_k(fights)
-    print(res.round(4).to_string())
-    print(f"best constant K on {TUNE_START}..{TUNE_END}: {float(res['log_loss'].idxmin()):g} (ELO_K = {ELO_K:g})")
-    if retune or not VARIANTS_PATH.exists():
-        v = tune_variants(fights)          # ~25 minutes: grid over K x debut offset x finish multiplier x K decay
-        v.to_csv(VARIANTS_PATH)
-    print(pd.read_csv(VARIANTS_PATH, index_col=0).to_string())
+    if tune:
+        print(tune_k(fights).round(4).to_string())
+        v = tune_variants(fights)
+        v.to_csv(TUNING_PATH, float_format="%.6f")
+        print(v.to_string())
+        best = v.loc["all three combined"]
+        print(f"wrote {TUNING_PATH.relative_to(ROOT)}; best combined setting: "
+              f"k={best['k']:g}, debut_offset={best['debut_offset']}, finish_mult={best['finish_mult']:g}, k_decay={best['k_decay']:g}")
     print(f"ELO_PARAMS = {ELO_PARAMS}")
     run_elo(fights, **ELO_PARAMS).to_csv(OUT_PATH, index=False)
-    print(f"wrote {OUT_PATH.relative_to(ROOT)} and {VARIANTS_PATH.relative_to(ROOT)}")
+    print(f"wrote {OUT_PATH.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
     import sys
-    main(retune="--retune" in sys.argv)
+    main(tune="--tune" in sys.argv)

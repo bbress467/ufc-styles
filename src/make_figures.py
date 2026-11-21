@@ -516,6 +516,61 @@ def matchup_results(path: Path, min_prior: int = M.MIN_PRIOR) -> None:
     plt.close(fig)
 
 
+SHARE_IMAGE_PATH = ROOT / "site" / "og-image.png"
+SHARE_FIGHTERS = ["Khabib Nurmagomedov", "Max Holloway", "Demetrious Johnson", "Sean Strickland", "Kamaru Usman",
+                  "Nate Diaz", "Demian Maia", "Israel Adesanya"]   # two per quadrant, readable at preview size
+
+
+def share_image(path: Path = SHARE_IMAGE_PATH) -> None:
+    """1200x630 link-preview image of the style map (Open Graph / Twitter card), saved into site/."""
+    profiles = F.build_profiles(None)
+    model_path = A.MODEL_DIR / f"style_axes_m{A.CHOSEN_AXES}.joblib"
+    axes = A.StyleAxes.load(model_path) if model_path.exists() else A.fit_style_axes(profiles, A.CHOSEN_AXES)
+    s = axes.transform(profiles).set_index("fighter_name")
+    points = {n: (s.at[n, "axis_1"], s.at[n, "axis_2"]) for n in SHARE_FIGHTERS if n in s.index}
+
+    fig = plt.figure(figsize=(12, 6.3), dpi=100)
+    fig.patch.set_facecolor("white")
+    fig.text(0.04, 0.80, "UFC style map", fontsize=33, fontweight="bold", color="#1d1d1f", va="top")
+    fig.text(0.04, 0.66, f"How {len(s):,} UFC fighters fight:\ngrappling vs. striking volume,\nclinch and body work vs.\nhead strikes at range",
+             fontsize=19, color="#333333", va="top", linespacing=1.35)
+    fig.text(0.04, 0.17, "Interactive map, fighter cards\nand search", fontsize=15, color="#555555", va="bottom", linespacing=1.35)
+    fig.text(0.04, 0.08, "bbress467.github.io/ufc-styles", fontsize=15, color="#045796", va="bottom", fontweight="bold")
+
+    ax = fig.add_axes((0.395, 0.06, 0.585, 0.88))
+    xlim = (s["axis_1"].min() - 0.6, s["axis_1"].max() + 1.0)
+    ylim = (s["axis_2"].min() - 0.75, s["axis_2"].max() + 0.7)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    _quadrant_shading(ax, xlim, ylim)
+    ax.axhline(0, color="#8a8a8a", lw=1.0, zorder=1)
+    ax.axvline(0, color="#8a8a8a", lw=1.0, zorder=1)
+    ax.scatter(s["axis_1"], s["axis_2"], s=7, color="#9c9c9c", alpha=0.7, lw=0, zorder=2)
+    xy = np.array(list(points.values()))
+    ax.scatter(xy[:, 0], xy[:, 1], s=60, color=LABELLED_DOT_COLOR, edgecolor="white", lw=0.8, zorder=3)
+    ax.scatter([0], [0], marker="D", s=60, facecolor="white", edgecolor="#222222", lw=1.4, zorder=4)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for sp in ax.spines.values():
+        sp.set_color("#bbbbbb")
+    names = {}
+    for (xs_, ys_), text in QUADRANT_NAMES.items():
+        names[text] = ax.text(0.02 if xs_ == "left" else 0.98, 0.97 if ys_ == "top" else 0.03, text,
+                              transform=ax.transAxes, ha=xs_, va=ys_, fontsize=15, fontweight="bold",
+                              color=QUADRANT_NAME_COLORS[(xs_, ys_)], zorder=6)
+    fig.canvas.draw()
+    name_boxes = [o.get_window_extent(fig.canvas.get_renderer()).expanded(1.06, 1.3) for o in names.values()]
+    labels = place_labels(ax, points, fontsize=14, obstacles=name_boxes, keep_clear=[(0.0, 0.0)])
+    check_labels(ax, labels, points, obstacles=names, keep_clear=[(0.0, 0.0)])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with plt.rc_context({"savefig.bbox": "standard"}):   # override the module-wide tight bbox: exactly 1200x630
+        fig.savefig(path, dpi=100)
+    from PIL import Image
+    with Image.open(path) as im:
+        assert im.size == (1200, 630), f"share image is {im.size}, expected 1200x630"
+    plt.close(fig)
+
+
 def data_range_text() -> str:
     """'Based on UFC fights from 2000 through August 8, 2026', from the dataset's first year and last fight date."""
     import sqlite3
@@ -544,6 +599,8 @@ def main() -> None:
     for name, fn in (("style_map.png", style_map), ("style_evolution.png", style_evolution), ("matchup_results.png", matchup_results)):
         fn(OUT_DIR / name)
         print(f"wrote {(OUT_DIR / name).relative_to(ROOT)}")
+    share_image()
+    print(f"wrote {SHARE_IMAGE_PATH.relative_to(ROOT)} (1200x630 link preview)")
     print(f"README data-range note: {update_readme_data_range()}")
 
 

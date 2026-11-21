@@ -1,0 +1,97 @@
+:root {
+  --text: #1d1d1f;
+  --muted: #555;
+  --line: #8a8a8a;
+  --frame: #bbbbbb;
+  --navy: #1b2a4a;
+  --bg: #ffffff;
+  --panel: #f6f6f4;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0 auto;
+  max-width: 1120px;
+  padding: 16px 16px 32px;
+  line-height: 1.5;
+  font-size: 16px;
+}
+
+a { color: #045796; }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid #2f6db3; outline-offset: 2px; }
+
+.page-header h1 { font-size: 1.8rem; margin: 0.2em 0 0.3em; letter-spacing: -0.01em; }
+.lede { margin: 0 0 0.4em; max-width: 62em; }
+.how-to { margin: 0 0 1em; color: var(--muted); }
+
+/* Search */
+.search { margin: 0 0 12px; }
+.search label { display: block; font-weight: 600; margin-bottom: 4px; }
+.search-box { position: relative; max-width: 420px; }
+#search-input {
+  width: 100%; font: inherit; padding: 10px 40px 10px 12px;
+  border: 1px solid #b5b5b5; border-radius: 8px; background: #fff;
+}
+#search-input::-webkit-search-cancel-button { display: none; }
+#search-clear {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  border: 0; background: transparent; font-size: 1.4rem; line-height: 1; padding: 6px 10px; cursor: pointer; color: var(--muted);
+}
+#search-suggestions {
+  position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px);
+  margin: 0; padding: 4px 0; list-style: none; background: #fff;
+  border: 1px solid #c8c8c8; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+  max-height: 320px; overflow-y: auto;
+}
+#search-suggestions li { padding: 8px 12px; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; }
+#search-suggestions li .div { color: var(--muted); font-size: 0.85em; white-space: nowrap; }
+#search-suggestions li[aria-selected="true"], #search-suggestions li:hover { background: #eef2f8; }
+#search-suggestions li.empty { color: var(--muted); cursor: default; }
+.search-status { min-height: 1.5em; margin: 6px 0 0; color: var(--muted); font-size: 0.95rem; }
+
+/* Chart */
+.chart { position: relative; margin: 0; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; touch-action: manipulation; }
+.chart-message { padding: 48px 0; text-align: center; color: var(--muted); }
+.chart-message.error { color: #842f1e; }
+
+.axis-end { font-size: 15px; fill: #222; }
+.quadrant-name { font-weight: 700; }
+.fighter-label {
+  font-size: 13.5px; fill: #111;
+  paint-order: stroke; stroke: #fff; stroke-width: 3.5px; stroke-linejoin: round;  /* white halo */
+}
+.fighter-label.selected { font-weight: 700; }
+.leader { stroke: #777; stroke-width: 0.8; fill: none; }
+.bg-dot { fill: #9c9c9c; fill-opacity: 0.7; }
+.lab-dot { stroke: #fff; stroke-width: 0.8; }
+.hover-dot { fill: var(--navy); stroke: #fff; stroke-width: 1.5; pointer-events: none; }
+.selected-ring { fill: none; stroke: var(--navy); stroke-width: 2.5; pointer-events: none; }
+
+.tooltip {
+  position: absolute; z-index: 10; pointer-events: none;
+  background: #fff; border: 1px solid #c8c8c8; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+  padding: 8px 11px; font-size: 0.92rem; line-height: 1.35; max-width: 260px;
+}
+.tooltip .name { font-weight: 700; font-size: 1rem; }
+.tooltip .q { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+.tooltip .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.25); flex: none; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 8px 0 4px; font-size: 0.95rem; }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.note { color: var(--muted); margin: 4px 0 0; font-size: 0.95rem; max-width: 62em; }
+
+.page-footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #e2e2e2; color: var(--muted); font-size: 0.9rem; }
+.page-footer p { margin: 0.3em 0; }
+
+@media (max-width: 640px) {
+  body { padding: 12px 12px 24px; font-size: 15px; }
+  .page-header h1 { font-size: 1.45rem; }
+  .axis-end { font-size: 12.5px; }
+  .fighter-label { font-size: 12px; stroke-width: 3px; }
+  .search-box { max-width: none; }
+}

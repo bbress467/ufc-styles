@@ -169,8 +169,7 @@ conda-meta/
 # Rope project settings
 .ropeproject
 
-# mkdocs/Zensical documentation
-/site
+# mkdocs/Zensical documentation: not used here. site/ holds the interactive style map and must be committed.
 
 # mypy
 .mypy_cache/

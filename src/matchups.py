@@ -66,18 +66,25 @@ def build_dataset(refresh: bool = False, start: str = TRAIN_START, split_date: s
             return cached["data"]
     ff = F.load_fighter_fights()
     axes = frozen_axes(split_date, ff)
-    ratings = elo.run_elo(elo.load_ufc_fights(), elo.ELO_K)
+    all_fights = elo.load_ufc_fights()
+    ratings = elo.run_elo(all_fights, **elo.ELO_PARAMS)
+    base = elo.run_elo(all_fights, k=elo.ELO_K)[["fight_id", "elo_red", "elo_blue"]].rename(
+        columns={"elo_red": "elo_base_red", "elo_blue": "elo_base_blue"})
+    ratings = ratings.merge(base, on="fight_id", validate="one_to_one")
     fights = ratings[(ratings["event_date"] >= start) & (ratings["result_status"] == "win")].copy()
     rows = []
     for date, day in fights.groupby("event_date"):
         prof = F.build_profiles(date, ff)
         sc = axes.transform(prof, eligible_only=False).set_index("fighter_id")
+        sc = sc.join(prof.set_index("fighter_id")[["z_td_att_per15"]])
         for r in day.itertuples(index=False):
             a, b = r.red_fighter_id, r.blue_fighter_id
             if a not in sc.index or b not in sc.index:
                 continue                                    # no prior UFC fight since 2000, or no division yet
             rows.append({"fight_id": r.fight_id, "event_date": date, "red": a, "blue": b,
                          "red_won": int(r.winner_id == a), "elo_red": r.elo_red, "elo_blue": r.elo_blue,
+                         "elo_base_red": r.elo_base_red, "elo_base_blue": r.elo_base_blue,
+                         "td_red": sc.at[a, "z_td_att_per15"], "td_blue": sc.at[b, "z_td_att_per15"],
                          "n_red": int(sc.at[a, "n_fights"]), "n_blue": int(sc.at[b, "n_fights"]),
                          **{f"red_{x}": sc.at[a, x] for x in AXES}, **{f"blue_{x}": sc.at[b, x] for x in AXES}})
     d = pd.DataFrame(rows)
@@ -85,7 +92,8 @@ def build_dataset(refresh: bool = False, start: str = TRAIN_START, split_date: s
     flip = np.random.default_rng(SEED).random(len(d)) < 0.5
     out = pd.DataFrame({"fight_id": d["fight_id"], "event_date": d["event_date"]})
     # (A column, B column, red column, blue column)
-    pairs = [("a", "b", "red", "blue"), ("elo_a", "elo_b", "elo_red", "elo_blue"), ("n_a", "n_b", "n_red", "n_blue")] + \
+    pairs = [("a", "b", "red", "blue"), ("elo_a", "elo_b", "elo_red", "elo_blue"), ("n_a", "n_b", "n_red", "n_blue"),
+             ("elo_base_a", "elo_base_b", "elo_base_red", "elo_base_blue"), ("td_a", "td_b", "td_red", "td_blue")] + \
             [(f"a_{x}", f"b_{x}", f"red_{x}", f"blue_{x}") for x in AXES]
     for col_a, col_b, col_r, col_bl in pairs:
         out[col_a] = np.where(flip, d[col_bl], d[col_r])
@@ -100,14 +108,20 @@ def build_dataset(refresh: bool = False, start: str = TRAIN_START, split_date: s
 
 
 def _meta(start, split_date):
-    return {"start": start, "split": split_date, "elo_k": elo.ELO_K, "prior_minutes": F.PRIOR_MINUTES,
+    return {"start": start, "split": split_date, "elo_k": elo.ELO_K, "elo_params": dict(elo.ELO_PARAMS), "prior_minutes": F.PRIOR_MINUTES,
             "feature_priors": dict(F.FEATURE_PRIORS), "era_window": F.ERA_WINDOW_YEARS, "min_fights": F.MIN_FIGHTS}
 
 
 # --------------------------------------------------------------------------- design matrices
-def design(d: pd.DataFrame, model: str) -> tuple[np.ndarray, list[str], np.ndarray]:
-    """Antisymmetric features for A vs B. Returns (X, column names, term type per column: 'elo' | 'diff' | 'inter')."""
-    cols = {"elo_diff": (d["elo_a"] - d["elo_b"]).to_numpy() / ELO_SCALE}
+def design(d: pd.DataFrame, model: str, elo_col: str = "elo") -> tuple[np.ndarray, list[str], np.ndarray]:
+    """Antisymmetric features for A vs B. Returns (X, column names, term type per column: 'elo' | 'diff' | 'inter').
+
+    elo_col: "elo" (improved Elo, elo.ELO_PARAMS) or "elo_base" (baseline K = 80 Elo).
+    model "elo+td" is the pre-specified grappling test: Elo + difference in takedown attempts per 15 min (z).
+    """
+    cols = {"elo_diff": (d[f"{elo_col}_a"] - d[f"{elo_col}_b"]).to_numpy() / ELO_SCALE}
+    if model == "elo+td":
+        cols["d_td_att"] = (d["td_a"] - d["td_b"]).to_numpy()
     if model in ("elo+style", "elo+inter"):
         for x in AXES:
             cols[f"d_{x}"] = (d[f"a_{x}"] - d[f"b_{x}"]).to_numpy()
@@ -123,8 +137,10 @@ def design(d: pd.DataFrame, model: str) -> tuple[np.ndarray, list[str], np.ndarr
 def swap(d: pd.DataFrame) -> pd.DataFrame:
     """The same fights with A and B exchanged (and the outcome flipped)."""
     s = d.copy()
-    for col in ["", "elo_", "n_"] + [f"{x}" for x in AXES]:
-        ca, cb = (f"{col}a", f"{col}b") if col in ("", "elo_", "n_") else (f"a_{col}", f"b_{col}")
+    for col in ["", "elo_", "n_", "elo_base_", "td_"] + [f"{x}" for x in AXES]:
+        ca, cb = (f"{col}a", f"{col}b") if col in ("", "elo_", "n_", "elo_base_", "td_") else (f"a_{col}", f"b_{col}")
+        if ca not in d:
+            continue
         s[ca], s[cb] = d[cb].to_numpy(), d[ca].to_numpy()
     s["y"] = 1 - d["y"]
     return s
@@ -159,15 +175,15 @@ def log_loss(p, y, eps=1e-12):
 
 
 def tune_lambda(train: pd.DataFrame, model: str, grid=LAMBDA_GRID, val_start: str = VAL_START,
-                lam_diff_fixed: float = 0.0) -> pd.DataFrame:
+                lam_diff_fixed: float = 0.0, elo_col: str = "elo") -> pd.DataFrame:
     """Validation log loss for each lambda: fit on train before val_start, score train from val_start on.
 
     elo+style: lambda applies to the axis differences. elo+inter: lambda applies to the interactions only,
     with the axis differences held at lam_diff_fixed (the value tuned for elo+style).
     """
     fit_d, val_d = train[train["event_date"] < val_start], train[train["event_date"] >= val_start]
-    Xf, _, terms = design(fit_d, model)
-    Xv, _, _ = design(val_d, model)
+    Xf, _, terms = design(fit_d, model, elo_col)
+    Xv, _, _ = design(val_d, model, elo_col)
     rows = []
     for lam in grid:
         pv = penalty_vector(terms, lam, 0.0) if model == "elo+style" else penalty_vector(terms, lam_diff_fixed, lam)
@@ -180,7 +196,8 @@ def tune_lambda(train: pd.DataFrame, model: str, grid=LAMBDA_GRID, val_start: st
 MODELS = ["elo", "elo+style", "elo+inter"]
 
 
-def evaluate(data: pd.DataFrame, min_prior: int = MIN_PRIOR, n_boot: int = 2000, seed: int = SEED) -> dict:
+def evaluate(data: pd.DataFrame, min_prior: int = MIN_PRIOR, n_boot: int = 2000, seed: int = SEED,
+             elo_col: str = "elo") -> dict:
     """Fit the three models on the training period, score the test period, with bootstrap CIs."""
     d = data[(data["n_a"] >= min_prior) & (data["n_b"] >= min_prior)]
     train, test = d[d["set"] == "train"], d[d["set"] == "test"]
@@ -188,21 +205,21 @@ def evaluate(data: pd.DataFrame, min_prior: int = MIN_PRIOR, n_boot: int = 2000,
     yt = test["y"].to_numpy()
     lam_diff = 0.0
     for m in MODELS:
-        tun = None if m == "elo" else tune_lambda(train, m, lam_diff_fixed=lam_diff)
+        tun = None if m == "elo" else tune_lambda(train, m, lam_diff_fixed=lam_diff, elo_col=elo_col)
         lam = 0.0 if tun is None else float(tun["val_log_loss"].idxmin())
         if m == "elo+style":
             lam_diff = lam
-        X, names, terms = design(train, m)
+        X, names, terms = design(train, m, elo_col)
         pv = penalty_vector(terms, lam_diff, lam if m == "elo+inter" else 0.0)
         beta = fit_logistic(X, train["y"].to_numpy(), pv)
-        Xt, _, _ = design(test, m)
+        Xt, _, _ = design(test, m, elo_col)
         p = predict(Xt, beta)
-        p_swap = predict(design(swap(test), m)[0], beta)
+        p_swap = predict(design(swap(test), m, elo_col)[0], beta)
         out["fits"][m] = {"beta": pd.Series(beta, index=names), "lambda": lam, "penalty": pd.Series(pv, index=names),
                           "max_swap_error": float(np.max(np.abs(p + p_swap - 1)))}
         out["tuning"][m] = tun
         out["pred"][m] = p
-    out["pred"]["raw_elo"] = elo.expected(test["elo_a"].to_numpy(), test["elo_b"].to_numpy())
+    out["pred"]["raw_elo"] = elo.expected(test[f"{elo_col}_a"].to_numpy(), test[f"{elo_col}_b"].to_numpy())
     # bootstrap over test fights (paired across models)
     rng = np.random.default_rng(seed)
     idx = rng.integers(0, len(test), size=(n_boot, len(test)))
@@ -227,15 +244,55 @@ def evaluate(data: pd.DataFrame, min_prior: int = MIN_PRIOR, n_boot: int = 2000,
     return out
 
 
-def coefficient_cis(d: pd.DataFrame, model: str, lam: np.ndarray | float = 0.0, n_boot: int = 500, seed: int = SEED) -> pd.DataFrame:
+def coefficient_cis(d: pd.DataFrame, model: str, lam: np.ndarray | float = 0.0, n_boot: int = 500, seed: int = SEED,
+                    elo_col: str = "elo") -> pd.DataFrame:
     """Point estimates and 95% bootstrap CIs (resampling fights) for a model fitted on `d` with penalty `lam`."""
-    X, names, _ = design(d, model)
+    X, names, _ = design(d, model, elo_col)
     y = d["y"].to_numpy()
     est = fit_logistic(X, y, lam)
     rng = np.random.default_rng(seed)
     boots = np.array([fit_logistic(X[i], y[i], lam) for i in (rng.integers(0, len(d), len(d)) for _ in range(n_boot))])
     return pd.DataFrame({"estimate": est, "lo": np.quantile(boots, .025, axis=0), "hi": np.quantile(boots, .975, axis=0)},
                         index=names)
+
+
+# --------------------------------------------------------------------------- pre-specified follow-up test
+GRAPPLING_TEST = {
+    "measure": "z_td_att_per15: shrunk takedown attempts per 15 min, era-relative z (no control time, no ground strikes)",
+    "feature": "td_a - td_b (fighter A minus fighter B), from profiles as of the fight date",
+    "model": "logistic, no intercept, unpenalized: improved Elo difference + takedown-attempt difference",
+    "baseline": "logistic, no intercept: improved Elo difference only, fitted on the same fights",
+    "train": f"decisive fights {TRAIN_START} to {SPLIT_DATE}, both fighters >= {MIN_PRIOR} prior UFC fights since 2000",
+    "test": f"decisive fights from {SPLIT_DATE}, same inclusion rule",
+    "primary_outcome": "difference in mean test log loss (model - baseline), 95% paired bootstrap CI, 2,000 resamples, seed 0",
+    "pass_rule": "the test improves predictions if the whole 95% CI is below 0",
+    "secondary": "Brier difference; takedown coefficient with 95% CI fitted on train and, separately, on test (descriptive only)",
+}
+
+
+def grappling_test(data: pd.DataFrame, n_boot: int = 2000, seed: int = SEED) -> dict:
+    """The single pre-specified follow-up test (GRAPPLING_TEST). Run once; report whatever the result."""
+    d = data[(data["n_a"] >= MIN_PRIOR) & (data["n_b"] >= MIN_PRIOR) & data["td_a"].notna() & data["td_b"].notna()]
+    train, test = d[d["set"] == "train"], d[d["set"] == "test"]
+    yt = test["y"].to_numpy()
+    preds, betas = {}, {}
+    for m in ("elo", "elo+td"):
+        X, names, _ = design(train, m)
+        b = fit_logistic(X, train["y"].to_numpy(), 0.0)
+        betas[m] = pd.Series(b, index=names)
+        preds[m] = predict(design(test, m)[0], b)
+    ll = {m: log_loss(p, yt) for m, p in preds.items()}
+    br = {m: (p - yt) ** 2 for m, p in preds.items()}
+    idx = np.random.default_rng(seed).integers(0, len(test), size=(n_boot, len(test)))
+    dl = (ll["elo+td"] - ll["elo"])[idx].mean(axis=1)
+    db = (br["elo+td"] - br["elo"])[idx].mean(axis=1)
+    res = {"n_train": len(train), "n_test": len(test), "betas": betas,
+           "log_loss": {m: float(v.mean()) for m, v in ll.items()}, "brier": {m: float(v.mean()) for m, v in br.items()},
+           "d_log_loss": float((ll["elo+td"] - ll["elo"]).mean()), "d_log_loss_ci": (float(np.quantile(dl, .025)), float(np.quantile(dl, .975))),
+           "d_brier": float((br["elo+td"] - br["elo"]).mean()), "d_brier_ci": (float(np.quantile(db, .025)), float(np.quantile(db, .975))),
+           "coef_train": coefficient_cis(train, "elo+td", 0.0, n_boot=500), "coef_test": coefficient_cis(test, "elo+td", 0.0, n_boot=500)}
+    res["passes"] = res["d_log_loss_ci"][1] < 0
+    return res
 
 
 if __name__ == "__main__":

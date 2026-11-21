@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UFC style map</title>
+  <meta name="description" content="An interactive map of how 1,240 UFC fighters fight: grappling vs. striking volume, and clinch and body work vs. head strikes at range.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="page-header">
+    <h1>UFC style map</h1>
+    <p class="lede">
+      Each dot is a UFC fighter with five or more UFC fights since 2000, placed by <em>how</em> they fight rather than how good they are.
+      Left to right runs from more striking volume to more takedowns and control. Bottom to top runs from head strikes thrown at range
+      to more work in the clinch and to the body. Each fighter is compared with others in the same division and era.
+    </p>
+    <p class="how-to">Hover over or tap any dot for details, or search for a fighter.</p>
+  </header>
+
+  <main>
+    <div class="search" role="search">
+      <label for="search-input">Find a fighter</label>
+      <div class="search-box">
+        <input id="search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Start typing a name…"
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-suggestions">
+        <button id="search-clear" type="button" aria-label="Clear search" hidden>×</button>
+        <ul id="search-suggestions" role="listbox" hidden></ul>
+      </div>
+      <p id="search-status" class="search-status" aria-live="polite"></p>
+    </div>
+
+    <figure class="chart" id="chart">
+      <div class="chart-message" id="chart-message">Loading the style map…</div>
+      <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+    </figure>
+
+    <div class="legend" aria-hidden="true">
+      <span class="legend-item"><svg width="14" height="14"><circle cx="7" cy="7" r="2.2" fill="#9c9c9c"></circle></svg><span id="legend-all">all fighters with 5+ UFC fights since 2000</span></span>
+      <span class="legend-item"><svg width="14" height="14"><circle cx="7" cy="7" r="4.5" fill="#1b2a4a" stroke="#fff"></circle></svg>labelled fighters</span>
+      <span class="legend-item"><svg width="16" height="16"><path d="M8 2 L14 8 L8 14 L2 8 Z" fill="#fff" stroke="#222" stroke-width="1.4"></path></svg>average fighter</span>
+    </div>
+    <p class="note" id="note">Styles are a continuum: fighters near the center have no strong lean either way. Positions are relative to fighters in the same division and era.</p>
+  </main>
+
+  <footer class="page-footer">
+    <p>
+      Data: <a id="source-link" href="https://www.kaggle.com/datasets/neelagiriaditya/ufc-datasets-1994-2025">neelagiriaditya/ufc-datasets-1994-2025</a>,
+      a public Kaggle dataset (CC0) scraped from ufcstats.com, covering UFC fights from 2000 through <span id="data-through">August 2026</span>.
+    </p>
+    <p>
+      Method, code and caveats: <a id="repo-link" href="https://github.com/bbress467/ufc-styles">github.com/bbress467/ufc-styles</a>.
+      An independent analysis, not affiliated with or endorsed by the UFC.
+    </p>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

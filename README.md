@@ -110,6 +110,7 @@ See [docs/data_sources.md](docs/data_sources.md) for why this source was chosen.
 | 7. Elo ratings (all UFC fights since 1994; baseline and improved Elo, both tuned on 2005–18) | `src/elo.py` | `data/processed/elo_ratings.csv` (tuning table: [docs/elo_tuning.csv](docs/elo_tuning.csv), via `--tune`) |
 | 8. Matchup models: Elo vs Elo + style, time split at 2019-01-01 | `src/matchups.py` | `data/processed/matchup_dataset.pkl` |
 | 9. README figures | `src/make_figures.py` | [docs/figures/](docs/figures/) (committed) |
+| 10. Data for the interactive style map | `src/export_site_data.py` | [site/data/fighters.json](site/data/fighters.json) (committed) |
 
 Feature definitions and decisions: [docs/feature_spec.md](docs/feature_spec.md). Style axes: [docs/style_axes.md](docs/style_axes.md).
 Clustering: [docs/clustering.md](docs/clustering.md). Matchup analysis, Elo and evaluation design: [docs/matchups.md](docs/matchups.md).
@@ -129,6 +130,7 @@ venv/bin/python src/clustering.py
 venv/bin/python src/elo.py
 venv/bin/python src/matchups.py
 venv/bin/python src/make_figures.py
+venv/bin/python src/export_site_data.py
 venv/bin/python -m unittest discover tests
 ```
 
@@ -145,6 +147,25 @@ Notebooks:
 - `05_style_axes`: choosing 3 vs 4 axes, loadings, fighters at each end
 - `06_style_map`: fighters plotted on the axes
 - `07_matchups`: Elo variants, model comparison, calibration, style coefficients, the pre-specified takedown test, interpretation
+
+## Interactive style map
+
+[`site/`](site/) holds an interactive version of the style map: hover over or tap any fighter for their division, number of UFC
+fights and quadrant, or search for a fighter by name. It's a static page (HTML, CSS and JavaScript, with D3 7.9.0 from a CDN) that
+reads `site/data/fighters.json`, written by `src/export_site_data.py`.
+
+**Open it on your computer.** The page loads its data with `fetch`, which browsers block for files opened directly from disk, so serve
+the folder with Python's built-in web server:
+
+```bash
+python3 -m http.server 8000 --directory site
+```
+
+Then open <http://localhost:8000> in a browser. Stop the server with Ctrl+C.
+
+**Publishing.** [`.github/workflows/pages.yml`](.github/workflows/pages.yml) deploys `site/` to GitHub Pages on every push to `main`
+(or by hand from the Actions tab). Once Pages is turned on (Settings → Pages → Source: GitHub Actions), the site is at
+<https://bbress467.github.io/ufc-styles/>.
 
 ## Date cutoff
 

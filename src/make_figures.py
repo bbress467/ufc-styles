@@ -16,6 +16,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib import patheffects  # noqa: E402
 import numpy as np  # noqa: E402
 
 import features as F  # noqa: E402
@@ -34,12 +35,13 @@ plt.rcParams.update({
 })
 
 # Fighters labelled on the style map. Label positions are chosen automatically by place_labels().
-STYLE_MAP_FIGHTERS = [
-    "Khabib Nurmagomedov", "Jailton Almeida", "Merab Dvalishvili", "Demian Maia", "Georges St-Pierre", "Amanda Nunes",
-    "Kamaru Usman", "Valentina Shevchenko", "Zhang Weili", "Alexander Volkanovski", "Charles Oliveira",
-    "Demetrious Johnson", "Jon Jones", "Anderson Silva", "Nate Diaz", "Joanna Jedrzejczyk", "Conor McGregor",
-    "Francis Ngannou", "Jose Aldo", "Israel Adesanya", "Max Holloway", "Sean Strickland",
+STYLE_MAP_FIGHTERS = [   # about 14: at least three clear examples per quadrant, crowded central labels dropped first
+    "Demetrious Johnson", "Kamaru Usman", "Charles Oliveira",                          # clinch grapplers (top right)
+    "Max Holloway", "Nate Diaz", "Anderson Silva", "Joanna Jedrzejczyk",               # clinch and body strikers (top left)
+    "Sean Strickland", "Israel Adesanya", "Jose Aldo",                                 # range strikers (bottom left)
+    "Khabib Nurmagomedov", "Demian Maia", "Amanda Nunes", "Merab Dvalishvili",         # wrestlers and ground grapplers
 ]
+LABEL_HALO = [patheffects.withStroke(linewidth=3, foreground="white")]   # keeps labels readable over dots and shading
 LABEL_FONTSIZE = 10.5
 MARKER_RADIUS_PX = 6          # labelled-point marker radius used for collision checks (display pixels, incl. margin)
 NEAREST_MARGIN = 1.15         # a label's own point must be this much closer than any other labelled point
@@ -143,7 +145,7 @@ def place_labels(ax, points: dict[str, tuple[float, float]], fontsize: float = L
             raise RuntimeError(f"could not place label for {name} without ambiguity or overlap")
         dxp, dyp, ha, va, b = best
         t = ax.annotate(name, points[name], xytext=(dxp, dyp), textcoords="offset points", ha=ha, va=va,
-                        fontsize=fontsize, zorder=5)
+                        fontsize=fontsize, zorder=5, path_effects=LABEL_HALO)
         placed.append(b)
         segments.append(_leader_endpoints((x0, y0), t.get_window_extent(renderer)))
         out[name] = (t, _leader_line(ax, (x0, y0), t.get_window_extent(renderer)))
@@ -227,8 +229,8 @@ def style_map(path: Path) -> None:
     s = axes.transform(profiles).set_index("fighter_name")
     points = {n: (s.at[n, "axis_1"], s.at[n, "axis_2"]) for n in STYLE_MAP_FIGHTERS if n in s.index}
 
-    fig, ax = plt.subplots(figsize=(10, 8.4))
-    fig.subplots_adjust(left=0.03, right=0.97, top=0.89, bottom=0.2)
+    fig, ax = plt.subplots(figsize=(10, 8.8))
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.89, bottom=0.235)
     # Extra room past the data so the quadrant names sit in clear corners.
     xlim = (s["axis_1"].min() - 0.6, s["axis_1"].max() + 1.0)
     ylim = (s["axis_2"].min() - 0.75, s["axis_2"].max() + 0.7)
@@ -237,7 +239,8 @@ def style_map(path: Path) -> None:
     _quadrant_shading(ax, xlim, ylim)
     ax.axhline(0, color="#8a8a8a", lw=0.9, zorder=1)
     ax.axvline(0, color="#8a8a8a", lw=0.9, zorder=1)
-    bg = ax.scatter(s["axis_1"], s["axis_2"], s=9, color="#7f7f7f", alpha=0.75, lw=0, zorder=2)  # visible over shading
+    # Background texture: small, light dots that still show in the shaded corners.
+    bg = ax.scatter(s["axis_1"], s["axis_2"], s=5, color="#9c9c9c", alpha=0.7, lw=0, zorder=2)
     xy = np.array(list(points.values()))
     lab = ax.scatter(xy[:, 0], xy[:, 1], s=36, color=BLUE, edgecolor="white", lw=0.6, zorder=3)
     avg = ax.scatter([0], [0], marker="D", s=46, facecolor="white", edgecolor="#222222", lw=1.3, zorder=4)
@@ -260,17 +263,19 @@ def style_map(path: Path) -> None:
     pos = ax.get_position()
     x_zero = pos.x0 + (0 - xlim[0]) / (xlim[1] - xlim[0]) * (pos.x1 - pos.x0)
     style = dict(fontsize=11.5, color="#222222")
+    # Vertical axis: arrowed labels at both ends of the vertical split, directly above and below the plot.
+    # Horizontal axis: one row lower, at the plot's left and right edges, so the bottom vertical label stands apart.
     ends = {
-        "left": fig.text(pos.x0, pos.y0 - 0.012, "← More striking volume", ha="left", va="top", **style),
-        "right": fig.text(pos.x1, pos.y0 - 0.012, "More takedowns and control →", ha="right", va="top", **style),
-        "bottom": fig.text(x_zero, pos.y0 - 0.012, "More head strikes at range", ha="center", va="top", **style),
-        "top": fig.text(x_zero, pos.y1 + 0.008, "More clinch and body work", ha="center", va="bottom", **style),
+        "top": fig.text(x_zero, pos.y1 + 0.008, "↑ More clinch and body work", ha="center", va="bottom", **style),
+        "bottom": fig.text(x_zero, pos.y0 - 0.010, "↓ More head strikes at range", ha="center", va="top", **style),
+        "left": fig.text(pos.x0, pos.y0 - 0.048, "← More striking volume", ha="left", va="top", **style),
+        "right": fig.text(pos.x1, pos.y0 - 0.048, "More takedowns and control →", ha="right", va="top", **style),
     }
     leg = fig.legend([bg, lab, avg], [f"all {len(s):,} fighters with 5+ UFC fights since 2000", "labelled fighters",
                                       "average fighter"],
-                     loc="upper left", bbox_to_anchor=(pos.x0, pos.y0 - 0.055), ncol=3, frameon=False, fontsize=10.5,
-                     handletextpad=0.3, columnspacing=1.6, markerscale=1.0)
-    note = fig.text(pos.x0, pos.y0 - 0.105, NOTE, ha="left", va="top", fontsize=10.5, color="#555555", linespacing=1.4)
+                     loc="upper left", bbox_to_anchor=(pos.x0, pos.y0 - 0.092), ncol=3, frameon=False, fontsize=10.5,
+                     handletextpad=0.3, columnspacing=1.6, markerscale=1.2)
+    note = fig.text(pos.x0, pos.y0 - 0.142, NOTE, ha="left", va="top", fontsize=10.5, color="#555555", linespacing=1.4)
     fig.suptitle("UFC style map: four broad styles", fontsize=15, y=0.975)
 
     fig.canvas.draw()
@@ -279,8 +284,19 @@ def style_map(path: Path) -> None:
     check_labels(ax, labels, points, obstacles=names, keep_clear=[(0.0, 0.0)])
     _check_no_overlap({**{f"axis end ({k})": t for k, t in ends.items()}, "legend": leg, "note": note,
                        **{f"quadrant name {k!r}": t for k, t in names.items()}}, fig)
+    _check_bottom_label_separate(ends, fig)
     fig.savefig(path, bbox_inches="tight", pad_inches=0.2)
     plt.close(fig)
+
+
+def _check_bottom_label_separate(ends: dict, fig, min_gap_px: float = 4.0) -> None:
+    """The bottom (vertical-axis) label must sit on its own line, clear of the left/right (horizontal-axis) labels."""
+    fig.canvas.draw()
+    r = fig.canvas.get_renderer()
+    bottom = ends["bottom"].get_window_extent(r)
+    for side in ("left", "right"):
+        b = ends[side].get_window_extent(r)
+        assert bottom.y0 - b.y1 >= min_gap_px, f"bottom axis label isn't clearly above the {side} axis label"
 
 
 def _check_no_overlap(artists: dict, fig) -> None:

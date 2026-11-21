@@ -24,7 +24,7 @@ rather than weight class or era.
 | 3 | **submission hunting** | more submission attempts |
 | 4 | **leg kicking** | more strikes aimed at the legs |
 
-![Style map as a quadrant chart: horizontal axis from more striking volume (left) to more takedowns and control (right), vertical axis from more head strikes at range (bottom) to more clinch and body work (top). The four shaded quadrants are labelled range strikers, clinch and body strikers, clinch grapplers, and wrestlers and ground grapplers, with 22 well-known fighters labelled.](docs/figures/style_map.png)
+![Style map as a quadrant chart: horizontal axis from more striking volume (left) to more takedowns and control (right), vertical axis from more head strikes at range (bottom) to more clinch and body work (top). The four shaded quadrants are labelled range strikers, clinch and body strikers, clinch grapplers, and wrestlers and ground grapplers, with 14 well-known fighters labelled.](docs/figures/style_map.png)
 
 **Reading the style map.** The map plots the first two axes. Left to right is axis 1, from more striking volume to more takedowns and
 control; bottom to top is axis 2, from head strikes at range to clinch and body work. The chart splits at the average fighter (the

@@ -9,7 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 import export_site_data as E  # noqa: E402
 
-FIELDS = {"name", "id", "division", "fights", "first_year", "last_year", "axis_1", "axis_2", "axis_3", "axis_4", "quadrant"}
+FIELDS = {"name", "id", "division", "fights", "first_year", "last_year", "axis_1", "axis_2", "axis_3", "axis_4", "quadrant",
+          "similar"}
+AXES = ("axis_1", "axis_2", "axis_3", "axis_4")
 
 
 class SiteDataFileTests(unittest.TestCase):
@@ -48,6 +50,39 @@ class SiteDataFileTests(unittest.TestCase):
         self.assertTrue(set(meta["labelled"]) <= names)
         self.assertTrue(set(meta["label_priority"]) <= set(meta["labelled"]))
         self.assertEqual(set(meta["label_priority"]), {"Khabib Nurmagomedov", "Max Holloway", "Demetrious Johnson"})
+
+    def test_similar_fighters_are_the_nearest_five(self):
+        fighters = self.data["fighters"]
+        by_id = {f["id"]: f for f in fighters}
+        dist = lambda a, b: math.dist([a[k] for k in AXES], [b[k] for k in AXES])
+        for f in fighters:
+            sim = f["similar"]
+            self.assertEqual(len(sim), E.N_SIMILAR)
+            self.assertEqual(len(set(sim)), len(sim))
+            self.assertNotIn(f["id"], sim)
+            self.assertTrue(all(i in by_id for i in sim))
+            d = [dist(f, by_id[i]) for i in sim]
+            self.assertEqual(d, sorted(d), f["name"])
+            # nobody outside the list is closer than the fifth (scores are rounded in the JSON, so allow a hair)
+            fifth = d[-1]
+            closer = [g["name"] for g in fighters if g["id"] not in sim and g["id"] != f["id"] and dist(f, g) < fifth - 2e-3]
+            self.assertEqual(closer, [], f["name"])
+
+    def test_card_axis_end_labels(self):
+        ends = self.data["meta"]["axis_ends"]
+        self.assertEqual(set(ends), set(AXES))
+        self.assertEqual(ends["axis_1"], ["More striking volume", "More takedowns and control"])   # same as the map
+        self.assertEqual(ends["axis_2"], ["More head strikes at range", "More clinch and body work"])
+
+    def test_share_image_is_link_preview_size(self):
+        from PIL import Image
+        with Image.open(ROOT / "site" / "og-image.png") as im:
+            self.assertEqual(im.size, (1200, 630))
+        html = (ROOT / "site" / "index.html").read_text(encoding="utf-8")
+        for tag in ('property="og:image" content="https://bbress467.github.io/ufc-styles/og-image.png"',
+                    'name="twitter:card" content="summary_large_image"',
+                    'property="og:url" content="https://bbress467.github.io/ufc-styles/"'):
+            self.assertIn(tag, html)
 
     def test_colours_match_the_readme_chart(self):
         import make_figures as MF

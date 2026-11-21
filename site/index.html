@@ -5,6 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>UFC style map</title>
   <meta name="description" content="An interactive map of how 1,240 UFC fighters fight: grappling vs. striking volume, and clinch and body work vs. head strikes at range.">
+  <link rel="canonical" href="https://bbress467.github.io/ufc-styles/">
+
+  <!-- Link previews (Open Graph and Twitter cards). The image is built by src/make_figures.py. -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="UFC style map">
+  <meta property="og:title" content="UFC style map">
+  <meta property="og:description" content="An interactive map of how 1,240 UFC fighters fight, from range strikers to wrestlers and ground grapplers, with fighter cards and search.">
+  <meta property="og:url" content="https://bbress467.github.io/ufc-styles/">
+  <meta property="og:image" content="https://bbress467.github.io/ufc-styles/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="UFC style map: fighters plotted in four coloured quadrants, from range strikers to wrestlers and ground grapplers.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="UFC style map">
+  <meta name="twitter:description" content="An interactive map of how 1,240 UFC fighters fight, from range strikers to wrestlers and ground grapplers, with fighter cards and search.">
+  <meta name="twitter:image" content="https://bbress467.github.io/ufc-styles/og-image.png">
+  <meta name="twitter:image:alt" content="UFC style map: fighters plotted in four coloured quadrants, from range strikers to wrestlers and ground grapplers.">
+
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -16,7 +34,7 @@
       Left to right runs from more striking volume to more takedowns and control. Bottom to top runs from head strikes thrown at range
       to more work in the clinch and to the body. Each fighter is compared with others in the same division and era.
     </p>
-    <p class="how-to">Hover over or tap any dot for details, or search for a fighter.</p>
+    <p class="how-to">Hover over a dot for a quick look, click or tap it for the fighter's card, or search for a fighter.</p>
   </header>
 
   <main>
@@ -34,6 +52,7 @@
     <figure class="chart" id="chart">
       <div class="chart-message" id="chart-message">Loading the style map…</div>
       <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+      <aside class="card" id="card" role="dialog" aria-modal="false" aria-labelledby="card-name" tabindex="-1" hidden></aside>
     </figure>
 
     <div class="legend" aria-hidden="true">

@@ -9,6 +9,7 @@
   const clearBtn = document.getElementById("search-clear");
   const list = document.getElementById("search-suggestions");
   const statusEl = document.getElementById("search-status");
+  const cardEl = document.getElementById("card");
 
   const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
                   "November", "December"];
@@ -49,6 +50,9 @@
     let raf = null;
     new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }).observe(chartEl);
     setupSearch();
+    setupCard();
+    openFromHash();
+    window.addEventListener("hashchange", openFromHash);
   }
 
   // ------------------------------------------------------------------ rendering
@@ -176,8 +180,10 @@
       .attr("fill", DATA.meta.labelled_dot_color).attr("cx", (i) => labPts[i][0]).attr("cy", (i) => labPts[i][1])
       .attr("r", narrow ? 4 : 4.5);
     if (selectedId) showSelected(byId.get(selectedId), false);
+    if (!cardEl.hidden) positionCard();
 
-    // Hover and tap: nearest fighter within a radius (larger for touch)
+    // Hover shows the tooltip (mouse only); a click or tap opens the nearest fighter's card (larger radius for
+    // touch), and a click on empty map space closes it.
     svg.on("pointermove", (ev) => {
       if (ev.pointerType === "touch" || stickyTooltip) return;
       const [mx, my] = d3.pointer(ev);
@@ -188,9 +194,7 @@
     svg.on("click", (ev) => {
       const [mx, my] = d3.pointer(ev);
       const i = nearest(mx, my, ev.pointerType === "touch" || state.narrow ? 26 : 18);
-      if (i === null) { stickyTooltip = false; hideTooltip(); if (selectedId) showSelected(byId.get(selectedId), true); return; }
-      stickyTooltip = true;
-      showHover(F[i], pts[i]);
+      if (i === null) closeCard(); else openCard(F[i]);
     });
   }
 
@@ -369,12 +373,8 @@
     }
 
     function choose(f) {
-      selectedId = f.id;
-      input.value = f.name;
-      clearBtn.hidden = false;
       closeList();
-      showSelected(f, true);
-      statusEl.textContent = `${f.name}: ${f.division || "no division"}, ${f.fights} UFC fights since 2000, ${f.quadrant}.`;
+      openCard(f, { focus: true });
     }
 
     function setActive(i) {
@@ -401,11 +401,115 @@
     });
     document.addEventListener("pointerdown", (e) => { if (!e.target.closest(".search-box")) closeList(); });
     clearBtn.addEventListener("click", () => {
-      input.value = ""; selectedId = null; clearBtn.hidden = true; closeList(); statusEl.textContent = "";
-      state.gSel.selectAll("*").remove();
-      state.gLabels.selectAll(".fighter-label.selected").remove();
-      hideTooltip(true);
+      closeList();
+      closeCard();
       input.focus();
     });
+  }
+
+  // ------------------------------------------------------------------ fighter card
+  const BAR_RANGE = 3;   // bars run from -3 to +3 (about the 1st to 99th percentile); longer scores are capped
+
+  function cardHtml(f) {
+    const meta = DATA.meta, q = DATA.quad[f.quadrant];
+    const years = f.first_year === f.last_year ? `${f.first_year}` : `${f.first_year}–${f.last_year}`;
+    const bars = Object.keys(meta.axis_ends).map((k) => {
+      const [lo, hi] = meta.axis_ends[k], v = f[k];
+      const w = Math.min(Math.abs(v), BAR_RANGE) / BAR_RANGE * 50;
+      const left = v < 0 ? 50 - w : 50;
+      const lean = Math.abs(v) < 0.25 ? "about average" : `toward ${(v < 0 ? lo : hi).toLowerCase()}`;
+      return `<li aria-label="${escapeHtml(`${lo} versus ${hi}: ${lean}`)}">` +
+        `<div class="bar-track" aria-hidden="true"><span class="bar-fill ${v < 0 ? "neg" : "pos"}" style="left:${left}%;width:${w}%"></span></div>` +
+        `<div class="bar-ends" aria-hidden="true"><span class="${v <= -0.25 ? "lean" : ""}">${escapeHtml(lo)}</span>` +
+        `<span class="${v >= 0.25 ? "lean" : ""}">${escapeHtml(hi)}</span></div></li>`;
+    }).join("");
+    const similar = (f.similar || []).map((id) => byId.get(id)).filter(Boolean).map((g) =>
+      `<li><button type="button" data-id="${g.id}"><span class="swatch" style="background:${DATA.quad[g.quadrant].tint}"></span>` +
+      `<span class="nm">${escapeHtml(g.name)}</span><span class="div">${escapeHtml(g.division || "")}</span></button></li>`).join("");
+    return `<button type="button" class="card-close" aria-label="Close fighter card">×</button>` +
+      `<h2 id="card-name">${escapeHtml(f.name)}</h2>` +
+      `<p class="facts">${escapeHtml(f.division || "No division")} · ${f.fights} UFC fights since 2000 · ${years}</p>` +
+      `<div class="q"><span class="swatch" style="background:${q.tint}"></span>${escapeHtml(f.quadrant)}</div>` +
+      `<h3>Style scores</h3><ul class="bars">${bars}</ul>` +
+      `<h3>Most similar styles</h3><ul class="similar">${similar}</ul>` +
+      `<p class="card-note">Scores compare ${escapeHtml(f.name.split(" ")[0])} with fighters in the same division and era; ` +
+      `the centre line is the average fighter. Similar fighters are the nearest across all four scores, from any division.</p>` +
+      `<a class="profile" href="${meta.ufcstats_fighter_url.replace("{id}", f.id)}" target="_blank" rel="noopener">Fight record on ufcstats.com</a>`;
+  }
+
+  function openCard(f, { focus = false } = {}) {
+    if (!f) return;
+    selectedId = f.id;
+    hideTooltip(true);
+    showSelected(f, false);
+    input.value = f.name;
+    clearBtn.hidden = false;
+    statusEl.textContent = `Showing ${f.name}: ${f.division || "no division"}, ${f.fights} UFC fights since 2000, ${f.quadrant}.`;
+    cardEl.innerHTML = cardHtml(f);
+    cardEl.scrollTop = 0;
+    cardEl.hidden = false;
+    positionCard();
+    if (location.hash !== `#${f.id}`) history.replaceState(null, "", `#${f.id}`);
+    if (focus) cardEl.focus({ preventScroll: true });
+    if (window.matchMedia("(max-width: 640px)").matches) revealAboveSheet(f);
+  }
+
+  function closeCard() {
+    const wasOpen = !cardEl.hidden;
+    cardEl.hidden = true;
+    cardEl.innerHTML = "";
+    document.body.style.paddingBottom = "";
+    selectedId = null;
+    hideTooltip(true);
+    if (state) { state.gSel.selectAll("*").remove(); state.gLabels.selectAll(".fighter-label.selected").remove(); }
+    input.value = "";
+    clearBtn.hidden = true;
+    statusEl.textContent = "";
+    if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+    return wasOpen;
+  }
+
+  // Wide screens: float the card over the half of the chart away from the fighter's dot. Phones: CSS bottom sheet.
+  function positionCard() {
+    if (!selectedId || !state) return;
+    const f = byId.get(selectedId);
+    const scale = state.svg.node().getBoundingClientRect().width / state.width;
+    const onLeft = state.x(f.axis_1) * scale < chartEl.clientWidth / 2;
+    cardEl.style.left = onLeft ? "auto" : "12px";
+    cardEl.style.right = onLeft ? "12px" : "auto";
+  }
+
+  // Phones: scroll so the fighter's dot sits in the visible area above the bottom sheet.
+  function revealAboveSheet(f) {
+    document.body.style.paddingBottom = `${cardEl.offsetHeight + 16}px`;   // room to scroll the lower map above the sheet
+    const box = state.svg.node().getBoundingClientRect();
+    const scale = box.width / state.width;
+    const dotY = box.top + state.y(f.axis_2) * scale;
+    const visible = window.innerHeight - cardEl.offsetHeight;
+    if (dotY < 60 || dotY > visible - 30) window.scrollBy({ top: dotY - Math.max(80, visible / 2), behavior: "smooth" });
+  }
+
+  function setupCard() {
+    cardEl.addEventListener("click", (e) => {
+      if (e.target.closest(".card-close")) { closeCard(); return; }
+      const b = e.target.closest(".similar button");
+      if (b) openCard(byId.get(b.dataset.id), { focus: true });
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || cardEl.hidden) return;
+      if (e.target === input && !list.hidden) return;   // first Escape closes the suggestion list
+      const inCard = cardEl.contains(document.activeElement);
+      closeCard();
+      if (inCard) input.focus({ preventScroll: true });
+    });
+  }
+
+  // Shareable links: #<ufcstats fighter id> opens that fighter's card.
+  function openFromHash() {
+    const id = decodeURIComponent(location.hash.slice(1)).toLowerCase();
+    if (!id) { if (!cardEl.hidden) closeCard(); return; }
+    const f = byId.get(id);
+    if (f) { if (f.id !== selectedId || cardEl.hidden) openCard(f); }
+    else statusEl.textContent = "That link doesn't match a fighter on this map.";
   }
 })();

@@ -16,6 +16,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import numpy as np
+
 import features as F
 import make_figures as MF
 import style_axes as A
@@ -23,6 +25,7 @@ import style_axes as A
 ROOT = Path(__file__).resolve().parents[1]
 OUT_PATH = ROOT / "site" / "data" / "fighters.json"
 REPO_URL = "https://github.com/bbress467/ufc-styles"
+N_SIMILAR = 5     # most similar fighters per card: nearest by Euclidean distance across all four axis scores
 KAGGLE_URL = "https://www.kaggle.com/datasets/neelagiriaditya/ufc-datasets-1994-2025"
 # Labels placed first, so they are always shown even on narrow screens where crowded labels are left out.
 LABEL_PRIORITY = ["Khabib Nurmagomedov", "Max Holloway", "Demetrious Johnson"]
@@ -33,6 +36,17 @@ def quadrant_of(axis_1: float, axis_2: float) -> str:
     x = "right" if axis_1 >= 0 else "left"
     y = "top" if axis_2 >= 0 else "bottom"
     return MF.QUADRANT_NAMES[(x, y)]
+
+
+def add_similar(fighters: list[dict], axis_names: list[str], k: int = N_SIMILAR) -> None:
+    """Add each fighter's k most similar fighters ('similar': ufcstats IDs, nearest first) by Euclidean distance
+    across all four style-axis scores. Ties are broken by name so the output is deterministic."""
+    X = np.array([[f[a] for a in axis_names] for f in fighters], float)
+    D = np.sqrt(((X[:, None, :] - X[None, :, :]) ** 2).sum(axis=2))
+    np.fill_diagonal(D, np.inf)
+    for i, f in enumerate(fighters):
+        order = sorted(range(len(fighters)), key=lambda j: (D[i, j], fighters[j]["name"]))[:k]
+        f["similar"] = [fighters[j]["id"] for j in order]
 
 
 def build() -> dict:
@@ -55,6 +69,7 @@ def build() -> dict:
             "quadrant": quadrant_of(r["axis_1"], r["axis_2"]),
         })
     fighters.sort(key=lambda f: f["name"])
+    add_similar(fighters, axes.axis_names)
 
     with sqlite3.connect(F.DB_PATH) as con:
         first, last = con.execute("SELECT MIN(event_date), MAX(event_date) FROM fights WHERE event_date >= ?",
@@ -67,6 +82,12 @@ def build() -> dict:
         "repo_url": REPO_URL,
         "ufcstats_fighter_url": "http://ufcstats.com/fighter-details/{id}",
         "axes": {k: A.AXIS_NAMES[k] for k in axes.axis_names},
+        "axis_ends": {   # plain-language ends for the card bars (low end, high end), matching the map's wording
+            "axis_1": ["More striking volume", "More takedowns and control"],
+            "axis_2": ["More head strikes at range", "More clinch and body work"],
+            "axis_3": ["Fewer submission attempts", "More submission attempts"],
+            "axis_4": ["Fewer leg kicks", "More leg kicks"],
+        },
         "quadrants": [{"x": x, "y": y, "name": n, "tint": MF.QUADRANT_TINTS[(x, y)],
                        "name_color": MF.QUADRANT_NAME_COLORS[(x, y)]} for (x, y), n in MF.QUADRANT_NAMES.items()],
         "labelled_dot_color": MF.LABELLED_DOT_COLOR,

@@ -1,5 +1,7 @@
 # UFC Fighter Styles
 
+**[Explore the interactive style map →](https://bbress467.github.io/ufc-styles/)**
+
 Describing UFC fighters' styles from round-by-round fight statistics, on continuous style axes with clusters as
 a secondary shorthand, and testing whether style matchups predict outcomes beyond fighter skill.
 
@@ -111,7 +113,7 @@ See [docs/data_sources.md](docs/data_sources.md) for why this source was chosen.
 | 6. Fit style clusters (PCA + Gaussian mixture): secondary shorthand | `src/clustering.py` | `data/processed/cluster_probabilities.csv`, `data/processed/models/` |
 | 7. Elo ratings (all UFC fights since 1994; baseline and improved Elo, both tuned on 2005–18) | `src/elo.py` | `data/processed/elo_ratings.csv` (tuning table: [docs/elo_tuning.csv](docs/elo_tuning.csv), via `--tune`) |
 | 8. Matchup models: Elo vs Elo + style, time split at 2019-01-01 | `src/matchups.py` | `data/processed/matchup_dataset.pkl` |
-| 9. README figures | `src/make_figures.py` | [docs/figures/](docs/figures/) (committed) |
+| 9. README figures and the site's link-preview image | `src/make_figures.py` | [docs/figures/](docs/figures/), [site/og-image.png](site/og-image.png) (committed) |
 | 10. Data for the interactive style map | `src/export_site_data.py` | [site/data/fighters.json](site/data/fighters.json) (committed) |
 
 Feature definitions and decisions: [docs/feature_spec.md](docs/feature_spec.md). Style axes: [docs/style_axes.md](docs/style_axes.md).
@@ -152,8 +154,10 @@ Notebooks:
 
 ## Interactive style map
 
-[`site/`](site/) holds an interactive version of the style map: hover over or tap any fighter for their division, number of UFC
-fights and quadrant, or search for a fighter by name. It's a static page (HTML, CSS and JavaScript, with D3 7.9.0 from a CDN) that
+[`site/`](site/) holds an interactive version of the style map. Hover over a fighter for a quick look; click or tap one, or search
+by name, to open their card: division, UFC fights since 2000, career years, quadrant, their scores on all four style axes (relative
+to their division and era) and the five fighters with the most similar scores across all four axes. While a card is open the page
+address ends in the fighter's ufcstats ID (for example `#427b5953ac8e3a27`), so the link opens straight to that fighter. It's a static page (HTML, CSS and JavaScript, with D3 7.9.0 from a CDN) that
 reads `site/data/fighters.json`, written by `src/export_site_data.py`.
 
 **Open it on your computer.** The page loads its data with `fetch`, which browsers block for files opened directly from disk, so serve

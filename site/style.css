@@ -97,3 +97,55 @@ a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid 
   .fighter-label { font-size: 12px; stroke-width: 3px; }
   .search-box { max-width: none; }
 }
+
+/* Fighter card: floats over the chart on wide screens, a bottom sheet on phones */
+.card {
+  position: absolute; z-index: 15; top: 40px; width: 340px; max-height: calc(100% - 60px); overflow-y: auto;
+  background: #fff; border: 1px solid #c8c8c8; border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+  padding: 14px 16px 12px; font-size: 0.92rem; line-height: 1.4;
+}
+.card:focus { outline: none; }
+.card:focus-visible { outline: 3px solid #2f6db3; outline-offset: 2px; }
+.card-close {
+  position: absolute; top: 6px; right: 6px; width: 36px; height: 36px; border: 0; border-radius: 50%;
+  background: transparent; font-size: 1.5rem; line-height: 1; color: var(--muted); cursor: pointer;
+}
+.card-close:hover { background: #f0f0f0; color: var(--text); }
+.card h2 { font-size: 1.2rem; margin: 0 40px 2px 0; line-height: 1.25; }
+.card .facts { margin: 0; color: var(--muted); }
+.card .q { display: flex; align-items: center; gap: 7px; margin: 6px 0 10px; font-weight: 600; }
+.card .swatch { width: 13px; height: 13px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.25); flex: none; }
+.card h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 12px 0 6px; }
+
+.bars { list-style: none; margin: 0; padding: 0; }
+.bars li { margin: 0 0 10px; }
+.bar-track { position: relative; height: 12px; background: #eeeeec; border-radius: 6px; }
+.bar-track::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1.5px; background: #555; transform: translateX(-50%); }
+.bar-fill { position: absolute; top: 0; bottom: 0; background: var(--navy); }
+.bar-fill.neg { border-radius: 6px 0 0 6px; }
+.bar-fill.pos { border-radius: 0 6px 6px 0; }
+.bar-ends { display: flex; justify-content: space-between; gap: 10px; font-size: 0.8rem; color: #444; margin-top: 3px; line-height: 1.25; }
+.bar-ends span:last-child { text-align: right; }
+.bar-ends .lean { color: var(--text); font-weight: 650; }
+
+.similar { list-style: none; margin: 0; padding: 0; }
+.similar button {
+  display: flex; width: 100%; align-items: center; gap: 8px; text-align: left; font: inherit; cursor: pointer;
+  background: transparent; border: 0; border-radius: 6px; padding: 6px 6px; color: #045796;
+}
+.similar button:hover { background: #eef2f8; }
+.similar .nm { text-decoration: underline; text-underline-offset: 2px; }
+.similar .div { margin-left: auto; color: var(--muted); font-size: 0.85em; white-space: nowrap; }
+.card .card-note { margin: 10px 0 4px; color: var(--muted); font-size: 0.82rem; }
+.card .profile { font-size: 0.82rem; }
+
+@media (max-width: 640px) {
+  .card {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; max-height: 60vh; max-height: 60dvh;
+    border-radius: 16px 16px 0 0; border-bottom: 0; padding: 18px 16px calc(14px + env(safe-area-inset-bottom));
+    box-shadow: 0 -6px 24px rgba(0,0,0,0.2); font-size: 0.95rem;
+  }
+  .card::before { content: ""; position: absolute; top: 7px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: #ccc; }
+  .card-close { top: 8px; right: 8px; width: 44px; height: 44px; }
+  .similar button { padding: 9px 6px; }
+}

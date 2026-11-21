@@ -55,9 +55,10 @@ Definitions follow ufcstats.com's career statistics, computed from the same figh
 2. **Minimum fights.** A fighter is `eligible` with at least **5 UFC fights since 2000** (before `as_of`). Profiles are returned for every
    fighter with at least one fight, with `n_fights` and `eligible` columns, so the matchup analysis can still see newer fighters. Clustering
    uses eligible fighters only.
-3. **Standardize within weight class**, so clusters reflect style rather than division. Columns `z_<feature>` hold the z-score of each
-   style feature within the fighter's division (mean and SD over *eligible* fighters in that division). Ineligible fighters are scored
-   against the same eligible-fighter mean and SD.
+3. **Standardize within division and era**, so axes and clusters reflect style rather than weight class or when someone fought.
+   Columns `z_<feature>` compare each fighter with *eligible* fighters in the same division whose career midpoints are within ±4 years of
+   theirs (details in "Era-relative standardization" below). Ineligible fighters are scored against the same kind of reference set.
+   The earlier division-only z-scores are kept as `zdiv_<feature>` for comparison.
 4. **Division per fighter = most frequent division** among their fights (before `as_of`), **ignoring catch-weight bouts**. Ties go to the
    most recent fight. TUF and Road to UFC tournament bouts are mapped to their division (e.g. "Ultimate Fighter 9 Welterweight Tournament"
    → Welterweight), and the single "Super Heavyweight" bout → Heavyweight. A fighter with only catch-weight fights has no division and NULL z-scores.
@@ -162,14 +163,66 @@ At P = 30, short-career fighters still lead several lists (Leslie Smith in pace,
 the lists are mostly fighters with 150+ minutes (Oliveira, Lytle and Lauzon in submissions, Holloway and Strickland in pace). At P = 60 the
 leaders are recognizable specialists, and fighters with strong but short records (Paul Sass, Jaqueline Amorim) can still appear.
 
+## Era-relative standardization (Decision 3)
+
+**Why.** Style features drifted strongly between 2000 and 2026 (`notebooks/04_style_evolution.ipynb`). Pace more than doubled, the share of
+strikes thrown at distance went from about half to almost 90%, and ground share, control and submission attempts fell sharply. With
+division-only z-scores, a typical 2005 fighter looks like a grappler and a typical 2024 fighter like a distance striker. That made the
+clusters partly proxies for era (Cramér's V = 0.17 with career era). Comparing each fighter with contemporaries in their own division
+removes that.
+
+**Method** (`features.era_relative_z`):
+
+1. Each fighter's **career midpoint** is the median date of their UFC fights since 2000 (strictly before `as_of`), as a decimal year
+   (`career_mid`).
+2. Their **reference set** is the *eligible* fighters in the same standardization group (division; Women's FW pooled with Women's BW)
+   whose career midpoints are within **±4 years** of theirs.
+3. If that window holds fewer than **30** fighters, the window widens to the 30 nearest career midpoints (`ERA_MIN_REF`).
+   `era_ref_n` records the reference size.
+4. `z = (feature − reference mean) / reference SD`, for each shrunk style feature.
+
+**No leakage.** Everything comes from `build_profiles(as_of)`'s own pre-`as_of` data: shrunk features, eligibility, divisions and career
+midpoints. Fighters who first fight after `as_of` don't exist in that data, and existing fighters' midpoints only reflect their earlier
+fights. The leakage test, that profiles as of a date are identical whether or not later fights are in the input, still passes. A new
+test checks a fighter's z-score against a hand-computed window.
+
+**Choosing the window.** Eligible fighters, full careers. Residual era trend is measured as R² of each z-score on a cubic in career midpoint,
+averaged over the 8 clustering features, and as the largest mean z in any career-era bin.
+
+| window (±years) | 1 | 2 | 3 | **4** | 5 | 6 | 8 | division only |
+|---|---|---|---|---|---|---|---|---|
+| mean R² on career midpoint | 0.002 | 0.002 | 0.002 | **0.002** | 0.004 | 0.005 | 0.011 | 0.048 |
+| max R² (worst feature) | 0.008 | 0.008 | 0.008 | **0.008** | 0.008 | 0.009 | 0.024 | 0.115 |
+| largest era-bin mean z | 0.24 | 0.24 | 0.25 | **0.26** | 0.27 | 0.27 | 0.31 | 0.69 |
+| reference size, median | 30 | 31 | 45 | **58** | 67 | 75 | 94 | 128 |
+| share of fighters whose window had to widen to 30 | 93% | 45% | 23% | **9%** | 5% | 2% | 1% | 0% |
+
+- **±4 years** is the widest window that removes as much era trend as the narrowest ones. Residual R² starts to rise at ±5, roughly
+  doubling, and reaches 0.011 at ±8. A wider window means more reference fighters, so a more stable mean and SD: median 58, against 45 at ±3.
+- Narrower windows don't remove more drift. They only shrink the reference set, and at ±1–2 years most fighters' windows have to widen to
+  the 30-fighter minimum anyway, so the window stops being the operative rule.
+- An 8-year span also roughly matches a long UFC career, so a fighter is compared with the people they were competing among.
+- **The remaining "largest era-bin mean" (about 0.25) is an edge effect.** It comes from the 14 eligible fighters whose careers centre on
+  2000–03, mostly on pace (−0.82). There are few eligible fighters that early, so their windows widen to the 30 nearest midpoints, which are
+  all *later* fighters. From 2008 on, every era-bin mean is within ±0.1. The same one-sided effect applies at any `as_of` date to fighters
+  whose careers centre near that date. They can only be compared with earlier fighters (see `docs/clustering.md`, "Leakage concerns").
+
+**Effect downstream.** The four style axes have essentially zero correlation with career midpoint (|r| ≤ 0.016, against up to 0.19 with
+division-only z-scores). The k = 3 clusters' association with era fell from V = 0.17 to 0.09 ([clustering.md](clustering.md),
+[style_axes.md](style_axes.md)). PCA explained variance is nearly unchanged (PC1 37%, 5 PCs 84.5%).
+
 ## Outputs
 
-- `build_profiles(as_of, prior_minutes=60, feature_priors=FEATURE_PRIORS)` returns one row per fighter: ID, name, `division`, `std_group`, `n_fights`, `eligible`,
-  `fight_time_min`, first and last fight date, the 10 shrunk style features, the 6 skill measures (td_acc and td_def shrunk),
-  `raw_` versions of the 12 shrunk columns, and `z_` versions of the shrunk style features.
-- `clustering_matrix(profiles)` gives eligible fighters × `z_` of the 8 `CLUSTER_FEATURES`. It's the input to
-  `notebooks/02_pca.ipynb` and to clustering later.
+- `build_profiles(as_of, prior_minutes=60, feature_priors=FEATURE_PRIORS, era_window_years=4, min_ref=30)` returns one row per fighter:
+  ID, name, `division`, `std_group`, `n_fights`, `eligible`, `fight_time_min`, first and last fight date, `career_mid`, `era_ref_n`,
+  the 10 shrunk style features, the 6 skill measures (td_acc and td_def shrunk), `raw_` versions of the 12 shrunk columns,
+  era-relative `z_` versions of the shrunk style features, and division-only `zdiv_` versions.
+- `clustering_matrix(profiles)` gives eligible fighters × era-relative `z_` of the 8 `CLUSTER_FEATURES`. It's the input to PCA
+  (`notebooks/02_pca.ipynb`), the style axes (`src/style_axes.py`) and the clusters (`src/clustering.py`).
 - `python src/features.py` writes the full-career profiles to `data/processed/fighter_profiles.csv` (gitignored).
-- `python -m unittest discover tests` runs the tests. They check that a profile as of a fight's date excludes that fight, that profiles
-  (shrunk values, priors, z-scores) don't change when later fights are present in the input, that the shrinkage matches the formula, and
-  that P = 0 returns the raw values.
+- `python -m unittest discover tests` runs the tests. They check:
+  - a profile as of a fight's date excludes that fight
+  - profiles (shrunk values, priors, career midpoints, z-scores) don't change when later fights are present in the input
+  - the shrinkage matches the formula, and P = 0 returns the raw values
+  - era-relative z matches a hand-computed window, and the window widens to the minimum
+  - the axis and cluster models save, load and apply to `as_of` profiles

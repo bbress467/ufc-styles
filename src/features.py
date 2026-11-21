@@ -27,6 +27,11 @@ PRIOR_MINUTES = 60.0
 # Per-feature overrides, chosen with the same held-out check (docs/feature_spec.md). Submission attempts
 # repeat least between career halves, so they get a stronger prior.
 FEATURE_PRIORS = {"sub_att_per15": 240.0}
+# Era-relative standardization: compare each fighter with eligible fighters in the same division whose career
+# midpoints are within +/- ERA_WINDOW_YEARS of theirs, with at least ERA_MIN_REF reference fighters
+# (window widens if needed). Chosen in docs/feature_spec.md ("Era-relative standardization").
+ERA_WINDOW_YEARS = 4.0
+ERA_MIN_REF = 30
 
 STYLE_FEATURES = ["pos_distance", "pos_clinch", "pos_ground", "tgt_head", "tgt_body", "tgt_leg",
                   "td_att_per15", "ctrl_share", "sub_att_per15", "pace"]
@@ -151,15 +156,18 @@ def ratio_features(agg: pd.DataFrame, priors: pd.DataFrame | None, prior_minutes
 def build_profiles(as_of: str | pd.Timestamp | None = None, fighter_fights: pd.DataFrame | None = None,
                    min_fights: int = MIN_FIGHTS, prior_minutes: float = PRIOR_MINUTES,
                    feature_priors: dict[str, float] | None = None,
+                   era_window_years: float | None = ERA_WINDOW_YEARS, min_ref: int = ERA_MIN_REF,
                    db_path: Path | str = DB_PATH) -> pd.DataFrame:
     """One row per fighter, built only from fights strictly before `as_of` (all fights if None).
 
     Every fighter with at least one such fight is returned; `eligible` marks fighters with >= min_fights.
     Style features and td_acc/td_def are shrunk toward the fighter's division average by `prior_minutes`
     of division-average fighting, or by `feature_priors[feature]` minutes where given (default FEATURE_PRIORS;
-    pass {} for one prior everywhere). raw_<feature> keeps the unshrunk value. z_<feature> standardizes each
-    shrunk style feature within the fighter's standardization group, using eligible fighters' mean and SD.
-    Division choice, eligibility, priors and standardization all use only pre-as_of fights (no leakage).
+    pass {} for one prior everywhere). raw_<feature> keeps the unshrunk value.
+    z_<feature> is era-relative: each shrunk style feature is standardized against eligible fighters in the same
+    standardization group whose career midpoint (median fight date) is within +/- era_window_years of the
+    fighter's own (era_relative_z). zdiv_<feature> is the division-only standardization, kept for comparison.
+    Division choice, eligibility, priors, career midpoints and standardization all use only pre-as_of fights.
     """
     ff = load_fighter_fights(db_path) if fighter_fights is None else fighter_fights
     if as_of is not None:
@@ -194,16 +202,73 @@ def build_profiles(as_of: str | pd.Timestamp | None = None, fighter_fights: pd.D
     for f in STYLE_FEATURES + SHRUNK_SKILL:
         p[f"raw_{f}"] = raw[f]
 
+    p["career_mid"] = career_midpoints(ff)
+
+    # Division-only standardization (kept for comparison as zdiv_*).
     ref = p[p["eligible"] & p["std_group"].notna()]
     mu, sd = ref.groupby("std_group")[STYLE_FEATURES].mean(), ref.groupby("std_group")[STYLE_FEATURES].std(ddof=0)
     m, s = mu.reindex(p["std_group"]).set_axis(p.index), sd.reindex(p["std_group"]).set_axis(p.index)
     for f in STYLE_FEATURES:
-        p[f"z_{f}"] = (p[f] - m[f]) / s[f].where(s[f] > 0)
+        p[f"zdiv_{f}"] = (p[f] - m[f]) / s[f].where(s[f] > 0)
 
-    cols = (["fighter_name", "division", "std_group", "n_fights", "eligible", "fight_time_min", "first_fight", "last_fight"]
+    # Era-relative standardization (z_*): division x career-midpoint window.
+    zera, ref_n = era_relative_z(p, era_window_years, min_ref)
+    for f in STYLE_FEATURES:
+        p[f"z_{f}"] = zera[f]
+    p["era_ref_n"] = ref_n
+
+    cols = (["fighter_name", "division", "std_group", "n_fights", "eligible", "fight_time_min", "first_fight", "last_fight",
+             "career_mid", "era_ref_n"]
             + STYLE_FEATURES + SKILL_MEASURES + [f"raw_{f}" for f in STYLE_FEATURES + SHRUNK_SKILL]
-            + [f"z_{f}" for f in STYLE_FEATURES])
+            + [f"z_{f}" for f in STYLE_FEATURES] + [f"zdiv_{f}" for f in STYLE_FEATURES])
     return p[cols].reset_index()
+
+
+def career_midpoints(ff: pd.DataFrame) -> pd.Series:
+    """Median fight date per fighter, as a decimal year (e.g. 2014.5), from the fights in `ff`."""
+    d = pd.to_datetime(ff["event_date"])
+    years = d.dt.year + (d.dt.day_of_year - 1) / 365.25
+    return years.groupby(ff["fighter_id"]).median()
+
+
+def era_relative_z(p: pd.DataFrame, window_years: float | None = ERA_WINDOW_YEARS,
+                   min_ref: int = ERA_MIN_REF) -> tuple[pd.DataFrame, pd.Series]:
+    """z-score each style feature against eligible fighters in the same standardization group whose career
+    midpoint is within +/- window_years of the fighter's own.
+
+    If fewer than `min_ref` reference fighters fall in the window, the `min_ref` nearest midpoints are used
+    instead (the window widens). window_years=None standardizes within the whole group (division only).
+    All inputs come from `p`, so with as_of profiles everything uses pre-as_of fights only.
+    Returns (z-scores, reference-set size per fighter).
+    """
+    z = pd.DataFrame(np.nan, index=p.index, columns=STYLE_FEATURES)
+    n = pd.Series(np.nan, index=p.index)
+    ref_all = p[p["eligible"] & p["std_group"].notna() & p["career_mid"].notna()]
+    for grp, members in p[p["std_group"].notna()].groupby("std_group"):
+        ref = ref_all[ref_all["std_group"] == grp]
+        if ref.empty:
+            continue
+        R = ref[STYLE_FEATURES].to_numpy(float)                       # n_ref x F
+        dist = np.abs(members["career_mid"].to_numpy()[:, None] - ref["career_mid"].to_numpy()[None, :])  # n_mem x n_ref
+        if window_years is None:
+            mask = np.ones_like(dist, dtype=bool)
+        else:
+            mask = dist <= window_years
+            k = min(min_ref, len(ref))
+            kth = np.sort(dist, axis=1)[:, k - 1:k]                   # distance to the k-th nearest reference fighter
+            mask |= (mask.sum(axis=1, keepdims=True) < k) & (dist <= kth)
+        w = mask.astype(float)
+        cnt = w.sum(axis=1)
+        valid = ~np.isnan(R)
+        Rf = np.where(valid, R, 0.0)
+        wsum = w @ valid.astype(float)
+        mean = (w @ Rf) / np.where(wsum > 0, wsum, np.nan)
+        var = (w @ (Rf ** 2)) / np.where(wsum > 0, wsum, np.nan) - mean ** 2
+        sd = np.sqrt(np.clip(var, 0, None))
+        X = members[STYLE_FEATURES].to_numpy(float)
+        z.loc[members.index] = (X - mean) / np.where(sd > 0, sd, np.nan)
+        n.loc[members.index] = cnt
+    return z, n
 
 
 def clustering_matrix(profiles: pd.DataFrame) -> pd.DataFrame:

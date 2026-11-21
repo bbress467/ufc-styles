@@ -84,6 +84,30 @@ class AsOfExcludesFutureFights(unittest.TestCase):
         pd.testing.assert_series_equal(default["pace"], uniform["pace"])
         self.assertFalse(np.allclose(default["sub_att_per15"], uniform["sub_att_per15"]))
 
+    def test_era_relative_z_matches_manual_window(self):
+        """z = (x - mean) / sd over eligible same-group fighters with career midpoint within +/- window (pre-as_of)."""
+        as_of = "2018-01-01"
+        p = features.build_profiles(as_of, self.ff).set_index("fighter_id")
+        e = p[p["eligible"] & p["std_group"].notna()]
+        fid = e.index[e["era_ref_n"] > features.ERA_MIN_REF][0]   # a fighter whose window did not need widening
+        me = p.loc[fid]
+        ref = e[(e["std_group"] == me["std_group"]) & ((e["career_mid"] - me["career_mid"]).abs() <= features.ERA_WINDOW_YEARS)]
+        expected = (me["pace"] - ref["pace"].mean()) / ref["pace"].std(ddof=0)
+        self.assertAlmostEqual(me["z_pace"], expected)
+        self.assertEqual(me["era_ref_n"], len(ref))
+        # career midpoint uses only pre-as_of fights
+        mine = self.ff[(self.ff["fighter_id"] == fid) & (self.ff["event_date"] < as_of)]
+        self.assertAlmostEqual(me["career_mid"], features.career_midpoints(mine).iloc[0])
+
+    def test_era_window_widens_to_min_reference(self):
+        p = features.build_profiles(None, self.ff)
+        e = p[p["eligible"] & p["std_group"].notna()]
+        group_sizes = e.groupby("std_group").size()
+        expected_min = e["std_group"].map(lambda g: min(features.ERA_MIN_REF, group_sizes[g]))
+        self.assertTrue((e["era_ref_n"] >= expected_min).all())
+        div_only = features.build_profiles(None, self.ff, era_window_years=None)
+        pd.testing.assert_series_equal(div_only["z_pace"], div_only["zdiv_pace"], check_names=False)
+
     def test_clustering_matrix_drops_redundant_shares(self):
         X = features.clustering_matrix(features.build_profiles(None, self.ff))
         self.assertNotIn("z_pos_distance", X.columns)

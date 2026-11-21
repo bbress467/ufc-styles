@@ -6,7 +6,8 @@
     scores = axes.transform(profiles)                          # axis_1..axis_m per eligible fighter
     axes.save(); A.StyleAxes.load(path)                        # reuse on build_profiles(as_of=...) output
 
-Axes are numbered by the variance they explain after rotation (axis 1 = most) and are not named.
+Axes are numbered by the variance they explain after rotation (axis 1 = most) and named in AXIS_NAMES:
+1 grappler vs. volume striker, 2 clinch and body work, 3 submission hunting, 4 leg kicking.
 Axis scores are standardized (mean 0, SD 1 on the fitting data) and uncorrelated; loadings are the
 correlations between each input feature and each axis.
 
@@ -32,6 +33,14 @@ SCORES_PATH = ROOT / "data" / "processed" / "style_axes.csv"
 
 CANDIDATE_AXES = (3, 4)
 CHOSEN_AXES = 4           # chosen in notebooks/05_style_axes.ipynb (stability + simple structure)
+
+# Names of the 4 axes (docs/style_axes.md). Columns stay axis_1..axis_4; use AXIS_KEYS to rename.
+AXIS_NAMES = {"axis_1": "grappler vs. volume striker", "axis_2": "clinch and body work",
+              "axis_3": "submission hunting", "axis_4": "leg kicking"}
+AXIS_KEYS = {"axis_1": "grappler_vs_striker", "axis_2": "clinch_body", "axis_3": "submission_hunting", "axis_4": "leg_kicking"}
+# Anchor feature per named axis: a 4-axis fit is reordered so axis_k is the axis this feature loads on most,
+# and signed so the anchor's loading is positive (high axis_1 = grappler, high axis_3 = more submission attempts, ...).
+AXIS_ANCHORS = {"axis_1": "ctrl_share", "axis_2": "pos_clinch", "axis_3": "sub_att_per15", "axis_4": "tgt_leg"}
 SEED = 0
 
 
@@ -127,7 +136,27 @@ def fit_style_axes(profiles: pd.DataFrame, n_axes: int = CHOSEN_AXES, as_of: str
             "n_fighters": len(X), "n_axes": n_axes, "era_window_years": F.ERA_WINDOW_YEARS, "era_min_ref": F.ERA_MIN_REF,
             "prior_minutes": F.PRIOR_MINUTES, "feature_priors": dict(F.FEATURE_PRIORS), "min_fights": F.MIN_FIGHTS,
             "start_date": F.START_DATE}
-    return StyleAxes(list(X.columns), mean, V, w, R, tot, meta)
+    axes = StyleAxes(list(X.columns), mean, V, w, R, tot, meta)
+    return align_to_named_axes(axes) if n_axes == len(AXIS_ANCHORS) else axes
+
+
+def align_to_named_axes(axes: StyleAxes) -> StyleAxes:
+    """Reorder and sign the axes of a 4-axis fit so they match AXIS_NAMES, using AXIS_ANCHORS.
+
+    Uses only the fit's own loadings (no outside data), so it is safe for models fitted on as_of profiles.
+    Raises if the anchors don't pick out four distinct axes, i.e. if the structure has changed.
+    """
+    L = axes.loadings
+    anchors = [AXIS_ANCHORS[a] for a in sorted(AXIS_ANCHORS)]
+    A = np.abs(L.loc[anchors].to_numpy())                       # anchor x fitted axis
+    rows, cols = linear_sum_assignment(-A)
+    if not np.all(A[rows, cols] >= 0.5):
+        raise ValueError(f"style axes don't match the named structure: anchor loadings {A[rows, cols].round(2)}")
+    perm = cols[np.argsort(rows)]
+    signs = np.sign(L.loc[anchors].to_numpy()[np.arange(len(anchors)), perm])
+    axes.R = axes.R[:, perm] * signs
+    axes.metadata["aligned_to"] = dict(AXIS_ANCHORS)
+    return axes
 
 
 def match_axes(ref: np.ndarray, other: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

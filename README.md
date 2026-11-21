@@ -3,7 +3,8 @@
 Describing UFC fighters' styles from round-by-round fight statistics, on continuous style axes with clusters as
 a secondary shorthand, and testing whether style matchups predict outcomes beyond fighter skill.
 
-Status: in progress. The data pipeline, era-relative style features, style axes and clusters are built; the matchup analysis is next.
+Status: the data pipeline, era-relative style features, named style axes, clusters and a first matchup analysis are built.
+Main finding so far: style axes don't improve fight predictions beyond Elo out of sample ([docs/matchups.md](docs/matchups.md)).
 
 ## Pipeline
 
@@ -21,9 +22,11 @@ See [docs/data_sources.md](docs/data_sources.md) for why this source was chosen.
 | 4. Build per-fighter style profiles (shrunk, standardized within division and era) | `src/features.py` | `data/processed/fighter_profiles.csv` |
 | 5. Fit the style axes (PCA + varimax, 4 axes): the main style description | `src/style_axes.py` | `data/processed/style_axes.csv`, `data/processed/models/` |
 | 6. Fit style clusters (PCA + Gaussian mixture): secondary shorthand | `src/clustering.py` | `data/processed/cluster_probabilities.csv`, `data/processed/models/` |
+| 7. Elo ratings (all UFC fights since 1994, K tuned on 2005–18) | `src/elo.py` | `data/processed/elo_ratings.csv` |
+| 8. Matchup models: Elo vs Elo + style, time split at 2019-01-01 | `src/matchups.py` | `data/processed/matchup_dataset.pkl` |
 
 Feature definitions and decisions: [docs/feature_spec.md](docs/feature_spec.md). Style axes: [docs/style_axes.md](docs/style_axes.md).
-Clustering: [docs/clustering.md](docs/clustering.md). Both docs cover leakage caveats for the matchup analysis.
+Clustering: [docs/clustering.md](docs/clustering.md). Matchup analysis, Elo and evaluation design: [docs/matchups.md](docs/matchups.md).
 Site structure notes: [docs/site_map.md](docs/site_map.md).
 
 ## How to run
@@ -37,6 +40,8 @@ venv/bin/python src/validate.py
 venv/bin/python src/features.py
 venv/bin/python src/style_axes.py
 venv/bin/python src/clustering.py
+venv/bin/python src/elo.py
+venv/bin/python src/matchups.py
 venv/bin/python -m unittest discover tests
 ```
 
@@ -49,6 +54,7 @@ Notebooks:
 - `04_style_evolution`: unadjusted style features by year since 2000
 - `05_style_axes`: choosing 3 vs 4 axes, loadings, fighters at each end
 - `06_style_map`: fighters plotted on the axes
+- `07_matchups`: model comparison, calibration, style coefficients, interpretation
 
 ## Date cutoff
 

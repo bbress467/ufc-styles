@@ -4,7 +4,23 @@ Implemented in [`src/style_axes.py`](../src/style_axes.py). Chosen and described
 mapped in [`notebooks/06_style_map.ipynb`](../notebooks/06_style_map.ipynb).
 
 The four continuous style axes are the **main way of describing a fighter's style**. Clusters ([clustering.md](clustering.md)) are a secondary
-shorthand. Axes are numbered by the variance they carry and are **not named**.
+shorthand. Axes are numbered by the variance they carry.
+
+## Names
+
+| axis | name | code key (`style_axes.AXIS_KEYS`) | high score means | anchor feature |
+|---|---|---|---|---|
+| 1 | **grappler vs. volume striker** | `grappler_vs_striker` | more takedowns, control and ground striking, lower pace | control share |
+| 2 | **clinch and body work** | `clinch_body` | more strikes in the clinch and to the body | clinch share |
+| 3 | **submission hunting** | `submission_hunting` | more submission attempts (and lower pace) | submission attempts |
+| 4 | **leg kicking** | `leg_kicking` | more strikes to the legs | leg share |
+
+Score columns stay `axis_1..axis_4`. `style_axes.AXIS_NAMES` gives the display names.
+
+**Alignment.** Any 4-axis fit is reordered and signed by its anchor features (`align_to_named_axes`): axis k is the axis its anchor
+loads on most, signed so that loading is positive. This uses only the fit's own loadings, so a model fitted on `as_of` profiles
+(e.g. the frozen 2019 model in the matchup analysis) gets the same names without seeing later data. If the anchors don't pick out
+four distinct axes with |loading| ≥ 0.5, the fit raises an error instead of mislabelling. The full-data fit is unchanged by alignment.
 
 ## Method
 
@@ -46,7 +62,7 @@ across axes.
 
 ## Loadings (4 axes)
 
-| feature | axis 1 | axis 2 | axis 3 | axis 4 |
+| feature | axis 1 (grappler vs. volume striker) | axis 2 (clinch and body work) | axis 3 (submission hunting) | axis 4 (leg kicking) |
 |---|---|---|---|---|
 | clinch share | +0.22 | **+0.79** | −0.03 | −0.04 |
 | ground share | **+0.78** | +0.03 | +0.23 | −0.04 |
@@ -59,10 +75,10 @@ across axes.
 
 Implied by the dropped shares: distance share is high where clinch and ground are low, and head share is high where body and legs are low.
 
-- **Axis 1:** control share, takedown attempts, ground strike share (positive); pace (negative).
-- **Axis 2:** clinch share and body share (positive).
-- **Axis 3:** submission attempts (positive); pace (negative).
-- **Axis 4:** leg share (positive).
+- **Axis 1, grappler vs. volume striker:** control share, takedown attempts, ground strike share (positive); pace (negative).
+- **Axis 2, clinch and body work:** clinch share and body share (positive).
+- **Axis 3, submission hunting:** submission attempts (positive); pace (negative).
+- **Axis 4, leg kicking:** leg share (positive).
 
 ## Fighters at each end
 
@@ -70,10 +86,10 @@ Eligible fighters, axis scores in SD units. Full top-10 lists with divisions and
 
 | axis | highest | lowest |
 |---|---|---|
-| 1 | Khabib Nurmagomedov +3.74, Gregor Gillespie, Tatiana Suarez, Pat Sabatini, Chael Sonnen, Merab Dvalishvili | Chris Lytle −2.60, Nam Phan, Junior Dos Santos, John Lineker, Irene Aldana, Max Holloway |
-| 2 | Loma Lookboonmee +4.42, Chidi Njokuani, Ben Saunders, Anthony Hamilton, Frankie Saenz, Yana Santos, Demetrious Johnson | Serghei Spivac −2.28, Yoshihiro Akiyama, Renato Moicano, Sean Brady, Khabib Nurmagomedov |
-| 3 | Charles Oliveira +5.44, Aleksei Oleinik, Jaqueline Amorim, TJ Waldburger, Jim Miller, Stefan Struve | Corey Anderson −2.25, Colby Covington, Curtis Blaydes, Kamaru Usman, Cain Velasquez |
-| 4 | Chris Gutierrez +6.14, Caol Uno, Armen Petrosyan, Chris Padilla, Nathaniel Wood, Johnny Walker | Evan Dunham −2.88, Brandon Royval, Darren Elkins, Sean Strickland, Joe Lauzon |
+| 1 (grappler vs. volume striker) | Khabib Nurmagomedov +3.74, Gregor Gillespie, Tatiana Suarez, Pat Sabatini, Chael Sonnen, Merab Dvalishvili | Chris Lytle −2.60, Nam Phan, Junior Dos Santos, John Lineker, Irene Aldana, Max Holloway |
+| 2 (clinch and body work) | Loma Lookboonmee +4.42, Chidi Njokuani, Ben Saunders, Anthony Hamilton, Frankie Saenz, Yana Santos, Demetrious Johnson | Serghei Spivac −2.28, Yoshihiro Akiyama, Renato Moicano, Sean Brady, Khabib Nurmagomedov |
+| 3 (submission hunting) | Charles Oliveira +5.44, Aleksei Oleinik, Jaqueline Amorim, TJ Waldburger, Jim Miller, Stefan Struve | Corey Anderson −2.25, Colby Covington, Curtis Blaydes, Kamaru Usman, Cain Velasquez |
+| 4 (leg kicking) | Chris Gutierrez +6.14, Caol Uno, Armen Petrosyan, Chris Padilla, Nathaniel Wood, Johnny Walker | Evan Dunham −2.88, Brandon Royval, Darren Elkins, Sean Strickland, Joe Lauzon |
 
 The axes are skewed. The high ends reach +4 to +6 SD (a few specialists), and the low ends stop at about −2 to −3.
 

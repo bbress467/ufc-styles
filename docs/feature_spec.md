@@ -179,6 +179,9 @@ removes that.
    whose career midpoints are within **±4 years** of theirs.
 3. If that window holds fewer than **30** fighters, the window widens to the 30 nearest career midpoints (`ERA_MIN_REF`).
    `era_ref_n` records the reference size.
+   If the **whole division** has fewer than 30 eligible fighters, the reference pool becomes all eligible fighters of the same sex
+   (women's or men's divisions), still within the window. This happens for new divisions at early `as_of` dates: on 2019-01-01,
+   Women's Flyweight had one eligible fighter. It never applies to full-career profiles.
 4. `z = (feature − reference mean) / reference SD`, for each shrunk style feature.
 
 **No leakage.** Everything comes from `build_profiles(as_of)`'s own pre-`as_of` data: shrunk features, eligibility, divisions and career

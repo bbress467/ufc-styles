@@ -237,15 +237,22 @@ def era_relative_z(p: pd.DataFrame, window_years: float | None = ERA_WINDOW_YEAR
     midpoint is within +/- window_years of the fighter's own.
 
     If fewer than `min_ref` reference fighters fall in the window, the `min_ref` nearest midpoints are used
-    instead (the window widens). window_years=None standardizes within the whole group (division only).
+    instead (the window widens). If the whole group has fewer than `min_ref` eligible fighters (a new division
+    at an early as_of date), the reference pool is all eligible fighters of the same sex (women's / men's divisions).
+    window_years=None standardizes within the whole group (division only).
     All inputs come from `p`, so with as_of profiles everything uses pre-as_of fights only.
     Returns (z-scores, reference-set size per fighter).
     """
     z = pd.DataFrame(np.nan, index=p.index, columns=STYLE_FEATURES)
     n = pd.Series(np.nan, index=p.index)
     ref_all = p[p["eligible"] & p["std_group"].notna() & p["career_mid"].notna()]
+    is_women = ref_all["std_group"].str.startswith("Women's")
     for grp, members in p[p["std_group"].notna()].groupby("std_group"):
         ref = ref_all[ref_all["std_group"] == grp]
+        if len(ref) < min_ref:
+            # Too few eligible fighters in the whole division (e.g. a new division at an early as_of date):
+            # pool all eligible fighters of the same sex, still within the career-midpoint window.
+            ref = ref_all[is_women == grp.startswith("Women's")]
         if ref.empty:
             continue
         R = ref[STYLE_FEATURES].to_numpy(float)                       # n_ref x F

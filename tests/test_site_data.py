@@ -58,6 +58,15 @@ class SiteDataFileTests(unittest.TestCase):
 
 @unittest.skipUnless((ROOT / "data" / "processed" / "ufc.sqlite").exists(), "database not built")
 class ExportMatchesPipelineTests(unittest.TestCase):
+    def test_readme_data_range_matches_dataset(self):
+        import make_figures as MF
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        expected = f"{MF.DATA_RANGE_START}*{MF.data_range_text()}.*{MF.DATA_RANGE_END}"
+        self.assertIn(expected, readme, "README data-range note is stale: rerun src/make_figures.py")
+        meta = json.loads((ROOT / "site" / "data" / "fighters.json").read_text(encoding="utf-8"))["meta"]
+        y, m, d = (int(v) for v in meta["data_through"].split("-"))
+        self.assertIn(f"through {MF.MONTHS[m - 1]} {d}, {y}", MF.data_range_text())   # site and README agree
+
     def test_committed_file_is_up_to_date(self):
         fresh = json.loads(json.dumps(E.build(), ensure_ascii=False))
         committed = json.loads((ROOT / "site" / "data" / "fighters.json").read_text(encoding="utf-8"))

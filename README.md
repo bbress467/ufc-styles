@@ -26,6 +26,8 @@ rather than weight class or era.
 
 ![Style map as a quadrant chart: horizontal axis from more striking volume (left) to more takedowns and control (right), vertical axis from more head strikes at range (bottom) to more clinch and body work (top). The four shaded quadrants are labelled range strikers, clinch and body strikers, clinch grapplers, and wrestlers and ground grapplers, with 14 well-known fighters labelled.](docs/figures/style_map.png)
 
+<!-- data-range:start -->*Based on UFC fights from 2000 through August 8, 2026.*<!-- data-range:end -->
+
 **Reading the style map.** The map plots the first two axes. Left to right is axis 1, from more striking volume to more takedowns and
 control; bottom to top is axis 2, from head strikes at range to clinch and body work. The chart splits at the average fighter (the
 diamond in the centre), giving four broad styles:

@@ -24,6 +24,9 @@ MIN_FIGHTS = 5
 # Shrinkage prior strength: minutes of division-average fighting added to every fighter's totals.
 # Chosen with a held-out check (docs/feature_spec.md, notebooks/01_feature_eda.ipynb section 5).
 PRIOR_MINUTES = 60.0
+# Per-feature overrides, chosen with the same held-out check (docs/feature_spec.md). Submission attempts
+# repeat least between career halves, so they get a stronger prior.
+FEATURE_PRIORS = {"sub_att_per15": 240.0}
 
 STYLE_FEATURES = ["pos_distance", "pos_clinch", "pos_ground", "tgt_head", "tgt_body", "tgt_leg",
                   "td_att_per15", "ctrl_share", "sub_att_per15", "pace"]
@@ -126,14 +129,17 @@ def division_priors(agg: pd.DataFrame, std_group: pd.Series, eligible: pd.Series
     return per_fighter.fillna(overall)
 
 
-def ratio_features(agg: pd.DataFrame, priors: pd.DataFrame | None, prior_minutes: float) -> pd.DataFrame:
+def ratio_features(agg: pd.DataFrame, priors: pd.DataFrame | None, prior_minutes: float,
+                   feature_priors: dict[str, float] | None = None) -> pd.DataFrame:
     """Shrunk ratio features: (num + P * prior_num_rate) / (den + P * prior_den_rate), P = prior seconds.
 
-    With prior_minutes = 0 (or priors None) these are the raw pooled ratios.
+    `prior_minutes` applies to every feature except those in `feature_priors` (feature -> minutes).
+    With all priors 0 (or priors None) these are the raw pooled ratios.
     """
-    P = prior_minutes * 60
+    feature_priors = feature_priors or {}
     out = pd.DataFrame(index=agg.index)
     for feat, (num, den, scale) in RATIOS.items():
+        P = feature_priors.get(feat, prior_minutes) * 60
         n, d = agg[num].astype(float), agg[den].astype(float)
         if priors is not None and P > 0:
             n, d = n + P * priors[num], d + P * priors[den]
@@ -144,12 +150,14 @@ def ratio_features(agg: pd.DataFrame, priors: pd.DataFrame | None, prior_minutes
 
 def build_profiles(as_of: str | pd.Timestamp | None = None, fighter_fights: pd.DataFrame | None = None,
                    min_fights: int = MIN_FIGHTS, prior_minutes: float = PRIOR_MINUTES,
+                   feature_priors: dict[str, float] | None = None,
                    db_path: Path | str = DB_PATH) -> pd.DataFrame:
     """One row per fighter, built only from fights strictly before `as_of` (all fights if None).
 
     Every fighter with at least one such fight is returned; `eligible` marks fighters with >= min_fights.
     Style features and td_acc/td_def are shrunk toward the fighter's division average by `prior_minutes`
-    of division-average fighting (raw_<feature> keeps the unshrunk value). z_<feature> standardizes each
+    of division-average fighting, or by `feature_priors[feature]` minutes where given (default FEATURE_PRIORS;
+    pass {} for one prior everywhere). raw_<feature> keeps the unshrunk value. z_<feature> standardizes each
     shrunk style feature within the fighter's standardization group, using eligible fighters' mean and SD.
     Division choice, eligibility, priors and standardization all use only pre-as_of fights (no leakage).
     """
@@ -174,7 +182,7 @@ def build_profiles(as_of: str | pd.Timestamp | None = None, fighter_fights: pd.D
 
     raw = ratio_features(agg, None, 0)
     priors = division_priors(agg, p["std_group"], p["eligible"])
-    shrunk = ratio_features(agg, priors, prior_minutes)
+    shrunk = ratio_features(agg, priors, prior_minutes, FEATURE_PRIORS if feature_priors is None else feature_priors)
     for f in STYLE_FEATURES:
         p[f] = shrunk[f]
     tmin = agg["time_s"] / 60
@@ -209,7 +217,7 @@ def main() -> None:
     profiles.to_csv(OUT_PATH, index=False)
     print(f"wrote {OUT_PATH.relative_to(ROOT)}: {len(profiles):,} fighters, "
           f"{int(profiles['eligible'].sum()):,} eligible (>= {MIN_FIGHTS} UFC fights since {START_DATE[:4]}), "
-          f"shrinkage prior {PRIOR_MINUTES:g} min")
+          f"shrinkage prior {PRIOR_MINUTES:g} min (overrides: {FEATURE_PRIORS})")
 
 
 if __name__ == "__main__":

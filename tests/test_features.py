@@ -69,9 +69,20 @@ class AsOfExcludesFutureFights(unittest.TestCase):
         self.assertAlmostEqual(p.loc[self.fighter, "pace"], expected)
 
     def test_zero_prior_gives_raw_values(self):
-        p = features.build_profiles(self.fight["event_date"], self.ff, prior_minutes=0)
+        p = features.build_profiles(self.fight["event_date"], self.ff, prior_minutes=0, feature_priors={})
         for f in features.STYLE_FEATURES + features.SHRUNK_SKILL:
             pd.testing.assert_series_equal(p[f], p[f"raw_{f}"], check_names=False)
+
+    def test_feature_prior_override(self):
+        """Submission attempts use their own prior; other features keep the global one."""
+        as_of = self.fight["event_date"]
+        default = features.build_profiles(as_of, self.ff).set_index("fighter_id")
+        uniform = features.build_profiles(as_of, self.ff, feature_priors={}).set_index("fighter_id")
+        override = features.build_profiles(as_of, self.ff, prior_minutes=features.PRIOR_MINUTES,
+                                           feature_priors={"sub_att_per15": features.PRIOR_MINUTES}).set_index("fighter_id")
+        pd.testing.assert_series_equal(uniform["sub_att_per15"], override["sub_att_per15"])
+        pd.testing.assert_series_equal(default["pace"], uniform["pace"])
+        self.assertFalse(np.allclose(default["sub_att_per15"], uniform["sub_att_per15"]))
 
     def test_clustering_matrix_drops_redundant_shares(self):
         X = features.clustering_matrix(features.build_profiles(None, self.ff))

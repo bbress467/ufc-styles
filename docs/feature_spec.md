@@ -116,9 +116,31 @@ MSE ÷ the variance of the later values, so 1.0 means "no better than guessing t
 - **Why 60 rather than 120:** a smaller prior keeps more of each fighter's own data. The median eligible fighter (100 min of fight time)
   keeps 62% weight on their own data at P = 60 (45% at 120), and the 10th-percentile fighter (51 min) keeps 46% (30% at 120). Larger priors also
   start to rank long-career fighters first simply because their values move least (see below). Part of the held-out error is genuine
-  style change over a career, not noise, and a larger prior is rewarded for ignoring that. One number for all features keeps the method
-  simple to explain. Per-feature priors would fit better, especially for submissions, and are an option if clustering looks noisy on
-  those features.
+  style change over a career, not noise, and a larger prior is rewarded for ignoring that. One number for most features keeps the method
+  simple to explain. Submission attempts are the exception (next section).
+
+### Per-feature prior: submission attempts = 240 minutes
+
+Submission attempts were still improving at the edge of the first grid (best P = 240), so the same held-out check was rerun for that
+feature alone, with a wider grid (`notebooks/01_feature_eda.ipynb`, section 5). Relative error for `sub_att_per15`:
+
+| P (min) | 60 | 120 | 180 | **240** | 300 | 360 | 480 | 600 | 900 |
+|---|---|---|---|---|---|---|---|---|---|
+| first half → second half | 1.39 | 1.11 | 1.03 | **1.00** | 0.99 | 0.99 | 1.00 | 1.01 | 1.03 |
+| first 5 fights → fights 6+ | 1.29 | 0.99 | 0.93 | **0.92** | 0.92 | 0.92 | 0.94 | 0.95 | 0.97 |
+
+- **Chosen: P = 240 minutes** (`features.FEATURE_PRIORS = {"sub_att_per15": 240}`). It is the best value on the first-5-fights split,
+  which matches the 5-fight eligibility rule, and within 1% of the best (300–360) on the half split. The curve is flat from 240 to 480,
+  so the next 120 minutes buy nothing.
+- **Why submissions need so much more:** they are rare events, and they are the least repeatable style feature. The raw correlation
+  between a fighter's first-half and second-half values is 0.41, against 0.52–0.69 for the other features except ground share (0.43). Even at
+  the best prior the error is close to 1. A fighter's past submission rate predicts their future rate only a little better than the
+  division average does, so the feature carries the least individual signal of the inputs.
+- At P = 240 the median eligible fighter (100 min) keeps 29% weight on their own submission data.
+- **Effect on PCA** (`notebooks/02_pca.ipynb`, section 1). Explained variance is unchanged to within 0.2 points per component. PC1, PC2
+  and PC5 have Tucker congruence 1.00 with the uniform-60-minute version. PC3 and PC4 rotate within their plane (congruence 0.94):
+  their eigenvalues are nearly tied (0.88 vs 0.85), and with less submission noise, submissions now load almost only on PC4. The space
+  spanned by the first 5 PCs, which is the clustering input, is identical: all principal-angle cosines are 1.000.
 - **Caveat:** the division averages in this check use all fights. That's fine for choosing one tuning number, but it isn't a leakage-free
   evaluation. `build_profiles` itself only uses pre-`as_of` data.
 
@@ -133,7 +155,7 @@ Share of the raw (P = 0) top 10 still in the top 10 at P = 60. Full lists at P =
 | `pos_clinch` | 2/10 | Ken Shamrock 0.44 (23 min) | Josh Barnett 0.25 (92 min) |
 | `pace` | 4/10 | Leslie Smith 18.7 (63 min) | Max Holloway 13.8 (534 min) |
 | `td_att_per15` | 5/10 | Quillan Salkilld 17.2 (29 min) | Merab Dvalishvili 14.8 (299 min) |
-| `sub_att_per15` | 6/10 | Paul Sass 7.4 (28 min) | Paul Sass 2.8, then TJ Waldburger, Charles Oliveira |
+| `sub_att_per15` | 6/10 | Paul Sass 7.4 (28 min) | Paul Sass 2.8, then TJ Waldburger, Charles Oliveira. With the chosen 240-min prior, 4/10 kept: Charles Oliveira 1.71 (295 min), TJ Waldburger, Paul Sass, Jim Miller, Chris Lytle |
 | `ctrl_share` | 7/10 | Bartosz Fabinski 0.79 (51 min) | Chael Sonnen 0.55 (143 min) |
 
 At P = 30, short-career fighters still lead several lists (Leslie Smith in pace, Quillan Salkilld still in the takedown top 10). At P = 120
@@ -142,7 +164,7 @@ leaders are recognizable specialists, and fighters with strong but short records
 
 ## Outputs
 
-- `build_profiles(as_of, prior_minutes=60)` returns one row per fighter: ID, name, `division`, `std_group`, `n_fights`, `eligible`,
+- `build_profiles(as_of, prior_minutes=60, feature_priors=FEATURE_PRIORS)` returns one row per fighter: ID, name, `division`, `std_group`, `n_fights`, `eligible`,
   `fight_time_min`, first and last fight date, the 10 shrunk style features, the 6 skill measures (td_acc and td_def shrunk),
   `raw_` versions of the 12 shrunk columns, and `z_` versions of the shrunk style features.
 - `clustering_matrix(profiles)` gives eligible fighters × `z_` of the 8 `CLUSTER_FEATURES`. It's the input to

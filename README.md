@@ -36,7 +36,8 @@ venv/bin/python -m unittest discover tests
 ```
 
 `src/download_data.py --latest` moves the pins to the newest dataset versions. No Kaggle login is needed.
-The exploratory notebook is `notebooks/01_feature_eda.ipynb`.
+Exploratory notebooks: `notebooks/01_feature_eda.ipynb` (feature distributions, correlations, shrinkage prior) and
+`notebooks/02_pca.ipynb` (PCA of the style features).
 
 ## Date cutoff
 

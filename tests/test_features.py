@@ -35,11 +35,11 @@ class AsOfExcludesFutureFights(unittest.TestCase):
         p = self.profile(self.fight["event_date"])
         self.assertEqual(p["n_fights"], 5)
         self.assertLess(p["last_fight"], self.fight["event_date"])
-        # recompute from the 5 prior fights only and compare
+        # recompute the unshrunk values from the 5 prior fights only and compare
         prior = self.prior
         self.assertAlmostEqual(p["fight_time_min"], prior["time_s"].sum() / 60)
-        self.assertAlmostEqual(p["pace"], prior["sig_att"].sum() / (prior["time_s"].sum() / 60))
-        self.assertAlmostEqual(p["pos_clinch"], prior["clinch_att"].sum() / prior["sig_att"].sum())
+        self.assertAlmostEqual(p["raw_pace"], prior["sig_att"].sum() / (prior["time_s"].sum() / 60))
+        self.assertAlmostEqual(p["raw_pos_clinch"], prior["clinch_att"].sum() / prior["sig_att"].sum())
         self.assertAlmostEqual(p["str_acc"], prior["sig_landed"].sum() / prior["sig_att"].sum())
 
     def test_profile_day_after_includes_the_fight(self):
@@ -48,13 +48,36 @@ class AsOfExcludesFutureFights(unittest.TestCase):
         self.assertEqual(p["n_fights"], 6)
         self.assertEqual(p["last_fight"], self.fight["event_date"])
 
-    def test_standardization_ignores_future_fights(self):
-        """z-scores as of a date must not change when later fights are added to the input."""
+    def test_shrinkage_and_standardization_ignore_future_fights(self):
+        """Shrunk features, z-scores and divisions as of a date must not change when later fights are in the input."""
         as_of = self.fight["event_date"]
         full = features.build_profiles(as_of, self.ff).set_index("fighter_id")
         past_only = features.build_profiles(as_of, self.ff[self.ff["event_date"] < as_of]).set_index("fighter_id")
-        z = [c for c in full.columns if c.startswith("z_")]
-        pd.testing.assert_frame_equal(full[z], past_only.loc[full.index, z])
+        pd.testing.assert_frame_equal(full, past_only.loc[full.index])
+
+    def test_shrinkage_matches_pseudo_count_formula(self):
+        """pace = (sig_att + P * division sig_att per second) / ((time + P) / 60), with division totals from pre-as_of data."""
+        as_of = self.fight["event_date"]
+        past = self.ff[self.ff["event_date"] < as_of]
+        p = features.build_profiles(as_of, self.ff).set_index("fighter_id")
+        grp = p.loc[self.fighter, "std_group"]
+        ref = p.index[p["eligible"] & (p["std_group"] == grp)]
+        rp = past[past["fighter_id"].isin(ref)]
+        mine = past[past["fighter_id"] == self.fighter]
+        P = features.PRIOR_MINUTES * 60
+        expected = (mine["sig_att"].sum() + P * rp["sig_att"].sum() / rp["time_s"].sum()) / ((mine["time_s"].sum() + P) / 60)
+        self.assertAlmostEqual(p.loc[self.fighter, "pace"], expected)
+
+    def test_zero_prior_gives_raw_values(self):
+        p = features.build_profiles(self.fight["event_date"], self.ff, prior_minutes=0)
+        for f in features.STYLE_FEATURES + features.SHRUNK_SKILL:
+            pd.testing.assert_series_equal(p[f], p[f"raw_{f}"], check_names=False)
+
+    def test_clustering_matrix_drops_redundant_shares(self):
+        X = features.clustering_matrix(features.build_profiles(None, self.ff))
+        self.assertNotIn("z_pos_distance", X.columns)
+        self.assertNotIn("z_tgt_head", X.columns)
+        self.assertEqual(len(X.columns), len(features.STYLE_FEATURES) - 2)
 
     def test_no_fights_on_or_after_as_of_anywhere(self):
         as_of = self.fight["event_date"]

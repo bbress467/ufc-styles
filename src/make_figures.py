@@ -33,17 +33,120 @@ plt.rcParams.update({
     "savefig.bbox": "tight", "savefig.facecolor": "white",
 })
 
-# Fighters labelled on the style map: label offset in points (dx, dy) and horizontal alignment, chosen so no labels overlap.
-STYLE_MAP_LABELS = {
-    "Khabib Nurmagomedov": (-4, -17, "right"), "Jailton Almeida": (0, -17, "center"), "Merab Dvalishvili": (0, 9, "center"),
-    "Demian Maia": (8, -4, "left"), "Georges St-Pierre": (8, -12, "left"), "Amanda Nunes": (8, -4, "left"),
-    "Kamaru Usman": (8, 2, "left"), "Valentina Shevchenko": (0, 9, "center"), "Zhang Weili": (8, 4, "left"),
-    "Alexander Volkanovski": (-6, -15, "right"), "Charles Oliveira": (8, 2, "left"), "Demetrious Johnson": (8, 2, "left"),
-    "Jon Jones": (8, -2, "left"), "Anderson Silva": (8, 4, "left"), "Nate Diaz": (8, 4, "left"),
-    "Joanna Jedrzejczyk": (-6, 6, "right"), "Conor McGregor": (8, 4, "left"), "Francis Ngannou": (8, -12, "left"),
-    "Jose Aldo": (8, -4, "left"), "Israel Adesanya": (8, -4, "left"), "Max Holloway": (8, -13, "left"),
-    "Sean Strickland": (8, -4, "left"),
-}
+# Fighters labelled on the style map. Label positions are chosen automatically by place_labels().
+STYLE_MAP_FIGHTERS = [
+    "Khabib Nurmagomedov", "Jailton Almeida", "Merab Dvalishvili", "Demian Maia", "Georges St-Pierre", "Amanda Nunes",
+    "Kamaru Usman", "Valentina Shevchenko", "Zhang Weili", "Alexander Volkanovski", "Charles Oliveira",
+    "Demetrious Johnson", "Jon Jones", "Anderson Silva", "Nate Diaz", "Joanna Jedrzejczyk", "Conor McGregor",
+    "Francis Ngannou", "Jose Aldo", "Israel Adesanya", "Max Holloway", "Sean Strickland",
+]
+LABEL_FONTSIZE = 10.5
+MARKER_RADIUS_PX = 6          # labelled-point marker radius used for collision checks (display pixels, incl. margin)
+NEAREST_MARGIN = 1.15         # a label's own point must be this much closer than any other labelled point
+
+
+def _rect_point_distance(b, x, y) -> float:
+    """Distance in display pixels from point (x, y) to bounding box b (0 if inside)."""
+    dx = max(b.x0 - x, 0, x - b.x1)
+    dy = max(b.y0 - y, 0, y - b.y1)
+    return float(np.hypot(dx, dy))
+
+
+def place_labels(ax, points: dict[str, tuple[float, float]], fontsize: float = LABEL_FONTSIZE) -> dict:
+    """Place one label per point with a thin leader line, avoiding ambiguity and overlaps.
+
+    For each label (most crowded points first), candidate positions are tried on rings around the point,
+    nearest first. A candidate is accepted only if the label box (a) stays inside the axes, (b) doesn't overlap
+    an already placed label, (c) doesn't cover any labelled point, and (d) is closer to its own point than to
+    any other labelled point by NEAREST_MARGIN. Raises if a label can't be placed, rather than drawing a bad figure.
+    Returns {name: (text, leader line)} for checks.
+    """
+    fig = ax.figure
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    to_px = ax.transData.transform
+    px = {n: to_px(p) for n, p in points.items()}
+    axes_box = ax.get_window_extent(renderer)
+
+    def crowding(n):
+        return sum(np.hypot(*(px[n] - px[m])) < 120 for m in px if m != n)
+
+    zx, zy = to_px((0.0, 0.0))                            # zero lines, in display pixels
+
+    def crosses_zero(b):
+        return b.x0 < zx < b.x1 or b.y0 < zy < b.y1
+
+    placed, out = [], {}
+    for name in sorted(points, key=crowding, reverse=True):
+        x0, y0 = px[name]
+        best = None
+        # Pass 1: nearby positions that don't sit on a zero line. Pass 2: any valid position.
+        tries = [(r, True) for r in (12, 18, 26)] + [(r, False) for r in (12, 18, 26, 36, 48, 62)]
+        for radius, avoid_zero in tries:
+            for ang in np.deg2rad(np.arange(0, 360, 15)):
+                dx, dy = radius * np.cos(ang), radius * np.sin(ang)
+                ha = "left" if dx > 3 else "right" if dx < -3 else "center"
+                va = "bottom" if dy > 3 else "top" if dy < -3 else "center"
+                t = ax.annotate(name, points[name], xytext=(dx, dy), textcoords="offset points",
+                                ha=ha, va=va, fontsize=fontsize, zorder=5)
+                b = t.get_window_extent(renderer).expanded(1.04, 1.12)
+                t.remove()
+                if not (axes_box.x0 <= b.x0 and b.x1 <= axes_box.x1 and axes_box.y0 <= b.y0 and b.y1 <= axes_box.y1):
+                    continue
+                if any(b.overlaps(o) for o in placed):
+                    continue
+                if any(_rect_point_distance(b, *px[m]) < MARKER_RADIUS_PX for m in px):
+                    continue
+                own = _rect_point_distance(b, x0, y0)
+                other = min(_rect_point_distance(b, *px[m]) for m in px if m != name)
+                if other < NEAREST_MARGIN * own + 4:
+                    continue
+                if avoid_zero and crosses_zero(b):
+                    continue
+                best = (dx, dy, ha, va, b)            # offsets are in points, as drawn
+                break
+            if best:
+                break
+        if best is None:
+            raise RuntimeError(f"could not place label for {name} without ambiguity or overlap")
+        dxp, dyp, ha, va, b = best
+        t = ax.annotate(name, points[name], xytext=(dxp, dyp), textcoords="offset points", ha=ha, va=va,
+                        fontsize=fontsize, zorder=5)
+        placed.append(b)
+        out[name] = (t, _leader_line(ax, (x0, y0), t.get_window_extent(renderer)))
+    return out
+
+
+def _leader_line(ax, point_px, box, gap_px: float = 5.0):
+    """Thin line from just outside the point to the nearest edge of the label box (drawn in data coordinates)."""
+    x0, y0 = point_px
+    ex, ey = min(max(x0, box.x0), box.x1), min(max(y0, box.y0), box.y1)     # nearest point on the box
+    d = np.hypot(ex - x0, ey - y0)
+    if d <= gap_px:
+        return None
+    sx, sy = x0 + (ex - x0) * gap_px / d, y0 + (ey - y0) * gap_px / d
+    inv = ax.transData.inverted()
+    (ax_, ay_), (bx_, by_) = inv.transform([(sx, sy), (ex, ey)])
+    line, = ax.plot([ax_, bx_], [ay_, by_], color="#777777", lw=0.7, zorder=4, solid_capstyle="butt")
+    return line
+
+
+def check_labels(ax, labels: dict, points: dict) -> None:
+    """Assert the rendered labels are unambiguous: inside the axes, non-overlapping, nearest to their own point."""
+    ax.figure.canvas.draw()
+    renderer = ax.figure.canvas.get_renderer()
+    px = {n: ax.transData.transform(p) for n, p in points.items()}
+    boxes = {n: t.get_window_extent(renderer) for n, (t, _) in labels.items()}
+    for n, (_, line) in labels.items():
+        assert line is not None, f"label {n} has no leader line"
+    names = list(boxes)
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            assert not boxes[a].overlaps(boxes[b]), f"labels overlap: {a} / {b}"
+        own = _rect_point_distance(boxes[a], *px[a])
+        nearest = min(names, key=lambda m: _rect_point_distance(boxes[a], *px[m]))
+        assert nearest == a, f"label {a} is nearer to {nearest}'s point than its own"
+        assert own < 80, f"label {a} is far from its point ({own:.0f}px)"
 
 
 def style_map(path: Path) -> None:
@@ -51,26 +154,37 @@ def style_map(path: Path) -> None:
     model_path = A.MODEL_DIR / f"style_axes_m{A.CHOSEN_AXES}.joblib"
     axes = A.StyleAxes.load(model_path) if model_path.exists() else A.fit_style_axes(profiles, A.CHOSEN_AXES)
     s = axes.transform(profiles).set_index("fighter_name")
+    points = {n: (s.at[n, "axis_1"], s.at[n, "axis_2"]) for n in STYLE_MAP_FIGHTERS if n in s.index}
 
-    fig, ax = plt.subplots(figsize=(10, 7.5))
-    ax.scatter(s["axis_1"], s["axis_2"], s=9, color=GREY, alpha=0.6, lw=0, label=f"all {len(s):,} fighters with 5+ UFC fights since 2000")
-    for name, (dx, dy, ha) in STYLE_MAP_LABELS.items():
-        if name not in s.index:
-            continue
-        x, y = s.at[name, "axis_1"], s.at[name, "axis_2"]
-        ax.scatter([x], [y], s=34, color=BLUE, zorder=3)
-        ax.annotate(name, (x, y), xytext=(dx, dy), textcoords="offset points", fontsize=10.5, ha=ha, zorder=4)
-    ax.axhline(0, color="#555555", lw=0.6)
-    ax.axvline(0, color="#555555", lw=0.6)
-    ax.set_xlabel("Axis 1: grappler vs. volume striker", labelpad=8)
-    ax.text(0.0, -0.105, "← more striking volume", transform=ax.transAxes, ha="left", fontsize=10.5, color="#333333")
-    ax.text(1.0, -0.105, "more takedowns, control and ground work →", transform=ax.transAxes, ha="right", fontsize=10.5, color="#333333")
+    fig, ax = plt.subplots(figsize=(10, 7.8))
+    fig.subplots_adjust(left=0.13, right=0.97, top=0.885, bottom=0.165)
+    ax.scatter(s["axis_1"], s["axis_2"], s=9, color=GREY, alpha=0.6, lw=0,
+               label=f"all {len(s):,} fighters with 5+ UFC fights since 2000")
+    xy = np.array(list(points.values()))
+    ax.scatter(xy[:, 0], xy[:, 1], s=34, color=BLUE, zorder=3, label="labelled fighters")
+    ax.set_xlim(s["axis_1"].min() - 0.3, s["axis_1"].max() + 0.6)
+    ax.set_ylim(s["axis_2"].min() - 0.4, s["axis_2"].max() + 0.3)
+    ax.axhline(0, color="#555555", lw=0.6, zorder=1)
+    ax.axvline(0, color="#555555", lw=0.6, zorder=1)
     ax.set_ylabel("Axis 2: clinch and body work\n(higher = more strikes in the clinch and to the body)")
-    ax.set_title("UFC style map: grappling vs. striking volume, and clinch/body work")
-    ax.legend(loc="upper left", frameon=False, fontsize=10.5)
-    ax.text(1.0, -0.155, "Scores in standard deviations, compared with fighters in the same division and era.",
-            transform=ax.transAxes, ha="right", fontsize=9.5, color="#555555")
-    fig.savefig(path)
+    ax.set_xlabel("Axis 1: grappler vs. volume striker", labelpad=6)
+    # Axis-end descriptions on their own line just below the axis title (measured), then the footnote.
+    fig.canvas.draw()
+    to_fig = fig.transFigure.inverted()
+    label_bottom = to_fig.transform((0, ax.xaxis.label.get_window_extent().y0))[1]
+    pos = ax.get_position()
+    y_ends = label_bottom - 0.012
+    fig.text(pos.x0, y_ends, "← more striking volume", ha="left", va="top", fontsize=10.5, color="#333333")
+    fig.text(pos.x1, y_ends, "more takedowns, control and ground work →", ha="right", va="top", fontsize=10.5, color="#333333")
+    fig.text(pos.x1, y_ends - 0.045, "Scores in standard deviations, compared with fighters in the same division and era.",
+             ha="right", va="top", fontsize=9.5, color="#555555")
+    fig.suptitle("UFC style map: grappling vs. striking volume, and clinch/body work", fontsize=14, y=0.985)
+    # Legend above the plot area, so it can't cross the zero lines or cover points.
+    ax.legend(loc="lower left", bbox_to_anchor=(0, 1.005), ncol=2, frameon=False, fontsize=10.5,
+              handletextpad=0.3, columnspacing=1.5, borderaxespad=0)
+    labels = place_labels(ax, points)
+    check_labels(ax, labels, points)
+    fig.savefig(path, bbox_inches="tight", pad_inches=0.15)
     plt.close(fig)
 
 
